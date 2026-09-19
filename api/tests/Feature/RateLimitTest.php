@@ -33,6 +33,29 @@ class RateLimitTest extends TestCase
         return $this->withServerVariables(['REMOTE_ADDR' => $ip])->postJson('/api/auth/student-login', ['access_code' => $code]);
     }
 
+    /**
+     * §5.1 / NFR3a — the throttle is cache-backed and the deployed cache store is `database`,
+     * so the cache tables must exist or BOTH login endpoints 500 on a fresh deployment.
+     *
+     * The suite itself runs on the `array` store (phpunit.xml), which is precisely why this
+     * has to be asserted explicitly: a missing migration is invisible to every other test here.
+     */
+    public function test_the_database_cache_store_that_backs_the_throttle_is_migrated(): void
+    {
+        foreach (['cache', 'cache_locks'] as $table) {
+            $this->assertTrue(
+                \Illuminate\Support\Facades\Schema::hasTable($table),
+                "Missing `{$table}` table: CACHE_STORE=database backs the §5.1 rate limiter, so "
+                .'login would fail with "no such table" on a fresh deployment.'
+            );
+        }
+
+        // The driver must actually work end to end, not merely have a table.
+        $store = \Illuminate\Support\Facades\Cache::store('database');
+        $store->put('halaqtna-throttle-probe', 'ok', 60);
+        $this->assertSame('ok', $store->get('halaqtna-throttle-probe'));
+    }
+
     public function test_sixth_failed_staff_login_is_locked_out_for_fifteen_minutes(): void
     {
         for ($i = 0; $i < 5; $i++) {

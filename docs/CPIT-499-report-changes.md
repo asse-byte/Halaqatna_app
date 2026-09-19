@@ -18,6 +18,7 @@ CPIT-499 report must document, with the reason it was made.
 | 4 | `audit_log.action` gains `VIEW` | §2.13 mandates "action `VIEW`, entity `progress_share_link`" for every card view, but the §2.14 enum lists only CREATE/UPDATE/DELETE/ADJUST. `VIEW` was added to satisfy §2.13. | Update the enum in Figure 4.7 and in the FR18 description. |
 | 5 | `system_setting` table added | UC3 ("configure system settings") had no storage. It holds the provisional constants — `d_max`, `α`, the XP rates — so that P10 calibration does not require a code change. | Add the table to Figure 4.7 and cite it under UC3 and under "all constants are provisional". |
 | 6 | `progress_share_link` table added | FR21 — see §3 below. | New table in Figure 4.7. |
+| 7 | `cache` and `cache_locks` tables added | NFR3a. Laravel's rate limiter is cache-backed and the deployed store is `CACHE_STORE=database`, so without these tables the first call to either login endpoint fails with *"no such table: cache"* — **FR1 and FR2 are both dead on a fresh deployment.** The `database` driver is deliberate over `file`: §5.1 lockouts must be shared across API workers, and a file cache is per-container. | Infrastructure tables, not domain entities. Mention under NFR3a rather than adding them to Figure 4.7, which models the domain. |
 
 **Not changed, deliberately.** `Student` still does **not** inherit from `User` (rule 2 / §11 item 4),
 derived values are still never stored (rule 3), and `session_error` still has no `weight` column —
@@ -197,7 +198,7 @@ php -d pcov.enabled=1 -d pcov.directory=app vendor/bin/phpunit --coverage-text
 
 | | Result |
 |---|---|
-| Tests | 95 passing, 509 assertions |
+| Tests | 96 passing, 512 assertions |
 | **Lines** | **92.78% (578 / 623)** |
 | Methods | 90.08% (109 / 121) |
 
@@ -230,3 +231,38 @@ registered as a `role:` alias that no route ever used. Every authorization decis
 through `AuthRbacService` from the controller that needs it, because most checks depend on the
 resource (*this* circle, *this* student) and a route alias cannot express that. Rule 5 is
 unaffected — the decisions were never in the middleware.
+
+---
+
+## 8. Two defects the test suite could not have found
+
+Both were found by **running the assembled system**, not by testing it, and both are worth a
+sentence in the evaluation chapter as evidence for why a deployment rehearsal is part of P9.
+
+### 8.1 The login endpoints were dead on a fresh deployment
+
+`CACHE_STORE=database` backs the §5.1 rate limiter, but no migration created the `cache` table.
+The first request to `POST /api/auth/login` or `/api/auth/student-login` returned **500**, so
+FR1 and FR2 were both unreachable on any newly provisioned database.
+
+The suite could not see it: `phpunit.xml` sets `CACHE_STORE=array`, which needs no table. Every
+one of the rate-limiting tests passed against a store that does not exist in production. Fixed by
+the migration in §1 item 7, plus a test that asserts the tables exist **and** that the `database`
+store round-trips a value — written deliberately against the driver the suite does *not* use.
+
+**The lesson for the report:** a test environment that differs from the deployment environment
+can only prove things about the test environment. Where they differ, assert the difference.
+
+### 8.2 A `#` in an environment value silently truncated the administrator password
+
+`SYS_ADMIN_PASSWORD=Admin#2026` in `api/.env`. Unquoted, dotenv reads `#` as the start of a
+comment, so the seeded value was **`Admin`** — a five-character password on the System
+Administrator account, the one role that can reach every circle and the audit trail.
+
+Nothing failed loudly. The seeder ran, the account existed, and `bcrypt` hashed the truncated
+string perfectly happily; the only symptom was that the documented password did not work. Fixed by
+quoting the value and warning about it in all three env templates.
+
+**The lesson for the report:** silent truncation of a secret is worse than a crash. A credential
+that is weaker than it looks gives false assurance, and NFR3 ("bcrypt hashes; signed JWTs") is
+satisfied on paper while the actual protection is five characters.
