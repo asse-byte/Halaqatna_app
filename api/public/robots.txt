@@ -1,0 +1,6 @@
+User-agent: *
+# FR21 / §2.13 — the parent progress card must never be indexed. The card also sends
+# an X-Robots-Tag header and carries <meta name="robots" content="noindex">; this is the
+# third layer, for crawlers that read robots.txt before requesting anything.
+Disallow: /p/
+Disallow: /api/

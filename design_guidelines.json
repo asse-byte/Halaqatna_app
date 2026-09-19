@@ -1,0 +1,160 @@
+{
+  "app_name": "HALAQTNA",
+  "project_title": "Smart Quran Memorization Circle Management System (CPIT-499, King Abdulaziz University)",
+  "context_type": "hybrid_fullstack",
+  "archetype": "ORGANIC_SACRED_EMERALD",
+  "design_philosophy": {
+    "core_concept": "Sacred Precision meets Modern Analytics. Clean Islamic architectural minimalism combined with tactical dashboard ergonomics.",
+    "principles": [
+      "Fusion over Imitation: Mix Islamic geometric harmony with high-density data analytics.",
+      "Mobile-First Teacher Flow: 360px narrow viewport optimization for low-friction live recitation logging without horizontal scrolling.",
+      "Dual-Script Ergonomics: Native RTL Arabic (default) and LTR English seamlessly switchable at runtime with mirrored layouts and fluid typography.",
+      "Data Clarity & Gamification: Four distinct, unblended leaderboards, EWMA Momentum tracking, 30 Juz interactive journey map, and weighted error tagging."
+    ]
+  },
+  "language_and_direction": {
+    "default_language": "ar",
+    "default_direction": "rtl",
+    "supported_languages": [
+      { "code": "ar", "label": "العربية", "dir": "rtl", "font_family": "'Cairo', 'Tajawal', sans-serif" },
+      { "code": "en", "label": "English", "dir": "ltr", "font_family": "'Plus Jakarta Sans', 'Outfit', sans-serif" }
+    ],
+    "switcher_requirement": "Floating or top-nav toggle present on all screens (ar/en) modifying `dir` on HTML element and applying corresponding font stack and mirrored CSS flex/grid classes."
+  },
+  "typography": {
+    "arabic_primary": "'Cairo', 'Readex Pro', 'Tajawal', sans-serif",
+    "arabic_quranic": "'Amiri', 'Scheherazade New', serif",
+    "latin_primary": "'Plus Jakarta Sans', 'Outfit', sans-serif",
+    "monospace": "'JetBrains Mono', 'Fira Code', monospace",
+    "font_cdn_imports": [
+      "https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap"
+    ],
+    "hierarchy": {
+      "h1_hero": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight",
+      "h2_section": "text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight",
+      "h3_card": "text-lg sm:text-xl font-semibold",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "caption_label": "text-xs font-medium uppercase tracking-wider text-muted-foreground",
+      "quran_verse": "font-quran text-lg sm:text-2xl leading-loose text-emerald-900 dark:text-emerald-100"
+    }
+  },
+  "colors": {
+    "palette_name": "Sacred Emerald & Warm Sand",
+    "light_mode": {
+      "background": "#FDFBF7",
+      "surface": "#FFFFFF",
+      "surface_elevated": "#F7F4EF",
+      "primary": "#0F382C",
+      "primary_foreground": "#FFFFFF",
+      "secondary": "#134E4A",
+      "secondary_foreground": "#F0FDF4",
+      "accent_gold": "#D97706",
+      "accent_gold_hover": "#B45309",
+      "muted": "#F1F5F9",
+      "muted_foreground": "#475569",
+      "border": "#E2E8F0",
+      "ring": "#0F382C"
+    },
+    "dark_mode": {
+      "background": "#061712",
+      "surface": "#0C231B",
+      "surface_elevated": "#123227",
+      "primary": "#10B981",
+      "primary_foreground": "#061712",
+      "secondary": "#059669",
+      "secondary_foreground": "#FFFFFF",
+      "accent_gold": "#F59E0B",
+      "accent_gold_hover": "#D97706",
+      "muted": "#1E293B",
+      "muted_foreground": "#94A3B8",
+      "border": "#1B3B30",
+      "ring": "#10B981"
+    },
+    "error_tags": {
+      "memory_gap": {
+        "label_ar": "نقص حفظ (فجوة)",
+        "label_en": "Memory Gap",
+        "weight": "Highest",
+        "bg_light": "bg-red-100 text-red-800 border-red-300",
+        "bg_dark": "dark:bg-red-950/60 dark:text-red-300 dark:border-red-800"
+      },
+      "linkage_error": {
+        "label_ar": "خطأ ربط",
+        "label_en": "Linkage Error",
+        "weight": "High",
+        "bg_light": "bg-amber-100 text-amber-800 border-amber-300",
+        "bg_dark": "dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800"
+      },
+      "tajweed_error": {
+        "label_ar": "خطأ تجويد",
+        "label_en": "Tajweed Error",
+        "weight": "Medium",
+        "bg_light": "bg-blue-100 text-blue-800 border-blue-300",
+        "bg_dark": "dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800"
+      },
+      "self_correction": {
+        "label_ar": "تصحيح ذاتي",
+        "label_en": "Self-Correction",
+        "weight": "Low/Positive",
+        "bg_light": "bg-emerald-100 text-emerald-800 border-emerald-300",
+        "bg_dark": "dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
+      }
+    },
+    "attendance_status": {
+      "present": "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
+      "absent": "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
+      "late": "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+      "excused": "bg-slate-500/15 text-slate-700 dark:text-slate-400 border-slate-500/30"
+    }
+  },
+  "responsive_and_mobile": {
+    "teacher_logging_mobile_rule": "The Teacher Recitation Session Logging screen MUST fit and function perfectly at 360px viewport width. Zero horizontal overflow (`overflow-x-hidden` on parent container, compact multi-step or single-column stacked forms, touch-friendly min 44px chip buttons for error tags and attendance).",
+    "breakpoints": {
+      "xs": "360px",
+      "sm": "640px",
+      "md": "768px",
+      "lg": "1024px",
+      "xl": "1280px"
+    }
+  },
+  "layout_and_grids": {
+    "student_dashboard": "Bento grid mode B (High Density Data). Columns: 1 on mobile, 2 on tablet, 4 on desktop. Includes Mastery Gauge (0-100 radial/arc chart), EWMA Momentum (pages/week chart), Precision score, Consistency percentage, and Review Depth index.",
+    "leaderboards": "Four distinct tabbed leaderboards (1. Momentum, 2. Precision, 3. Consistency, 4. Review Depth). NEVER combine into a single merged score.",
+    "juz_journey_map": "Interactive 30-Juz visual grid/timeline card with color-coded status (Mastered, In Progress, Needs Review, Not Started).",
+    "teacher_logging_view": "Vertical tight stream with sticky bottom/header quick submit bar, segmented control attendance picker, Surah & Ayah range pickers, tap-to-add error tag chips with Ayah reference inputs."
+  },
+  "auth_flows": {
+    "staff_login": "Standard Email + Password authentication card with role selector preview or quick demologin buttons.",
+    "student_login": "Dedicated separate screen with prominent 8-character teacher-generated access code input box (large centered letter-spacing font) with quick access demo codes."
+  },
+  "image_urls": {
+    "hero_mosque_minimal": "https://images.unsplash.com/photo-1554110838-816383ce7956?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHw0fHxxdXJhbiUyMG1vc3F1ZSUyMGlzbGFtaWMlMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDB8fHx8MTc4OTcyNzA5OHww&ixlib=rb-4.1.0&q=85",
+    "mosque_architecture_interior": "https://images.pexels.com/photos/20785804/pexels-photo-20785804.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "geometric_calligraphy": "https://images.pexels.com/photos/34066583/pexels-photo-34066583.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "sultan_mosque_aerial": "https://images.unsplash.com/photo-1519817650390-64a93db51149?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwyfHxxdXJhbiUyMG1vc3F1ZSUyMGlzbGFtaWMlMjBhcmNoaXRlY3R1cmUlMjBtaW5pbWFsaXN0fGVufDB8fHx8MTc4OTcyNzA5OHww&ixlib=rb-4.1.0&q=85"
+  },
+  "testing_convention": {
+    "rule": "Every button, link, tab, input, dialog trigger, leaderboard row, card metric, and error tag MUST have a descriptive kebab-case `data-testid` attribute.",
+    "examples": [
+      "data-testid='login-email-input'",
+      "data-testid='student-code-input'",
+      "data-testid='language-toggle-button'",
+      "data-testid='theme-toggle-button'",
+      "data-testid='session-log-submit-button'",
+      "data-testid='error-tag-memory-gap'",
+      "data-testid='leaderboard-tab-momentum'",
+      "data-testid='mastery-score-card'",
+      "data-testid='juz-progress-tile-30'",
+      "data-testid='export-pdf-button'"
+    ]
+  },
+  "implementation_rules": [
+    "Ensure default direction is RTL and default language is Arabic ('ar'). Toggle to English ('en') must change document direction to LTR dynamically.",
+    "Integrate Lucide or Radix icons. Do NOT use standard AI emoji characters (🤖, 🧠, 💡) for navigation or dashboard badges.",
+    "Teacher logging screen MUST be testable and visually optimal down to 360px viewport width without breaking horizontal layout.",
+    "Ensure all 4 weighted error tags are clearly distinct visually (Memory gap, Linkage error, Tajweed error, Self-correction).",
+    "Ensure the four leaderboards are distinct tabs or sub-views (Momentum, Precision, Consistency, Review Depth) and never merged into one single rank.",
+    "Include pre-seeded sample data for KAU CPIT-499 demo scenarios across System Admin, Circle Admin, Teacher, and Student roles. One-click role switching is a DEVELOPMENT-ONLY convenience: it must be compiled out of a production build, never shipped to a deployment a real user can reach.",
+    "All interactive elements must carry `data-testid` attributes."
+  ]
+}

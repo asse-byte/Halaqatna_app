@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Plus Jakarta Sans";
+    --background: 40 43% 98%;
+    --foreground: 160 40% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 160 40% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 40% 10%;
+    --primary: 162 58% 14%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 175 61% 19%;
+    --secondary-foreground: 138 76% 97%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 19% 35%;
+    --accent: 33 95% 44%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 88%;
+    --ring: 162 58% 14%;
+    --radius: 0.9rem;
+  }
+  .dark {
+    --background: 160 60% 6%;
+    --foreground: 150 30% 94%;
+    --card: 158 50% 9%;
+    --card-foreground: 150 30% 94%;
+    --popover: 158 50% 9%;
+    --popover-foreground: 150 30% 94%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 160 60% 6%;
+    --secondary: 161 94% 30%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 160 60% 6%;
+    --destructive: 0 63% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 158 40% 17%;
+    --input: 158 40% 20%;
+    --ring: 160 84% 39%;
+  }
+  html[dir="rtl"] { --font-sans: "Cairo"; }
+  * { @apply border-border; }
+  html { scroll-padding-bottom: 140px; }
+  html, body, #root { min-height: 100%; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;
+    background-image: radial-gradient(hsl(var(--primary) / 0.05) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  ::selection { background: hsl(var(--accent) / 0.35); }
+}
+
+@layer components {
+  .glass { @apply bg-card/80 backdrop-blur-xl border border-border/70 shadow-[0_1px_0_hsl(var(--border)),0_12px_40px_-20px_hsl(var(--primary)/0.35)]; }
+  .eyebrow { @apply text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground; }
+  .metric-number { @apply font-mono text-3xl sm:text-4xl font-semibold tabular-nums text-primary dark:text-primary; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors min-h-[44px] sm:min-h-0; }
+  .nav-link { @apply flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground; }
+  .nav-link.active { @apply bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground; }
+  .code-display { @apply font-mono tracking-[0.35em] text-2xl sm:text-3xl font-semibold text-primary; }
+}

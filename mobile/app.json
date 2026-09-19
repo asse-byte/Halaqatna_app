@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Halaqtna Teacher",
+    "slug": "halaqtna-teacher",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "extra": {
+      "apiUrl": "http://localhost:8000"
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

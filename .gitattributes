@@ -1,0 +1,18 @@
+# Halaqtna (CPIT-499) — line-ending policy.
+# Normalise text in the repository, and let each platform check out what it expects.
+* text=auto
+
+# These are executed by bash inside Linux containers. A CRLF here fails at run time with
+# "bash: \r: command not found", so they must stay LF on every platform, Windows included.
+*.sh            text eol=lf
+*.sql           text eol=lf
+docker/**       text eol=lf
+*.Dockerfile    text eol=lf
+Dockerfile      text eol=lf
+
+# Binary — never normalise, never diff as text.
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.pdf           binary
+*.joblib        binary

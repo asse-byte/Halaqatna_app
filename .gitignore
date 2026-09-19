@@ -1,0 +1,57 @@
+# Halaqtna (CPIT-499) — mono-repo ignore rules
+# Abdoul Malick Cisse (2250954) · Munthir Al-Farsi (2340042)
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Secrets: every real .env stays out of history ---
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# Templates that MUST stay tracked
+!api/.env.example
+!api/.env.docker
+!frontend/.env.example
+
+# --- /api (Laravel 11) ---
+api/vendor/
+api/storage/app/private/*
+api/storage/app/public/*
+api/storage/framework/cache/data/*
+api/storage/framework/sessions/*
+api/storage/framework/testing/*
+api/storage/framework/views/*
+api/storage/logs/*
+api/bootstrap/cache/*.php
+api/public/build/
+api/.phpunit.result.cache
+!**/.gitignore
+!**/.gitkeep
+
+# --- /frontend + /mobile (Node) ---
+node_modules/
+dist/
+.expo/
+npm-debug.log*
+yarn-error.log*
+
+# --- /ml (Python) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ml/model.joblib
+ml/reports/*.json
+
+# --- Coverage / test output ---
+coverage/
+api/coverage/
+
+# --- Docker ---
+docker/nginx/certs/

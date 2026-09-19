@@ -1,0 +1,157 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\RecitationSession;
+use App\Models\Student;
+use App\Models\SystemSetting;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
+
+/**
+ * Analytics Engine — FR7, FR8, FR9. Everything is computed on read from session + session_error.
+ * All constants are PROVISIONAL and calibrated in CPIT-499 (editable via system_setting).
+ */
+class AnalyticsEngine
+{
+    public const HIGH_SEVERITY = ['MEM_GAP', 'LNK_ERR'];
+
+    private function sessions(Student $student): Collection
+    {
+        return $student->sessions()->with('errors.errorType')->orderBy('session_date')->orderBy('session_id')->get();
+    }
+
+    // §3.1 weighted error load
+    public function errorLoad(RecitationSession $s): float
+    {
+        return round($s->errors->sum(fn ($e) => (float) $e->errorType->weight), 4);
+    }
+
+    // §3.2 error density — undefined when pages = 0
+    public function errorDensity(RecitationSession $s): ?float
+    {
+        return $s->pages_memorized > 0 ? $this->errorLoad($s) / $s->pages_memorized : null;
+    }
+
+    // §3.3 mastery over the last 8 sessions
+    public function mastery(Collection $sessions): ?float
+    {
+        $dMax = SystemSetting::num('d_max', 3.0);
+        $densities = $sessions->sortByDesc('session_id')->take(8)->map(fn ($s) => $this->errorDensity($s))->filter(fn ($d) => $d !== null);
+        if ($densities->isEmpty()) return null;
+        $dMean = $densities->avg();
+        return round(100 * (1 - min(1, $dMean / $dMax)), 1);
+    }
+
+    /** Pages per ISO week, filled from the first session week to the current week. */
+    public function weeklyPages(Collection $sessions, ?callable $filter = null): array
+    {
+        if ($sessions->isEmpty()) return [];
+        $start = Carbon::parse($sessions->first()->session_date)->startOfWeek();
+        $end = Carbon::now()->startOfWeek();
+        $weeks = [];
+        for ($w = $start->copy(); $w <= $end; $w->addWeek()) $weeks[$w->toDateString()] = 0.0;
+        foreach ($sessions as $s) {
+            if ($filter && !$filter($s)) continue;
+            $k = Carbon::parse($s->session_date)->startOfWeek()->toDateString();
+            $weeks[$k] = ($weeks[$k] ?? 0) + (float) $s->pages_memorized;
+        }
+        return $weeks;
+    }
+
+    // §3.4 momentum EWMA
+    public function momentum(Collection $sessions): float
+    {
+        $alpha = SystemSetting::num('alpha', 0.4);
+        $ewma = null;
+        foreach ($this->weeklyPages($sessions) as $pages) {
+            $ewma = $ewma === null ? $pages : $alpha * $pages + (1 - $alpha) * $ewma;
+        }
+        return round($ewma ?? 0, 2);
+    }
+
+    // §3.5 precision
+    public function precision(Collection $sessions): ?float
+    {
+        $total = 0.0; $high = 0.0;
+        foreach ($sessions as $s) {
+            foreach ($s->errors as $e) {
+                $w = (float) $e->errorType->weight;
+                $total += $w;
+                if (in_array($e->errorType->code, self::HIGH_SEVERITY, true)) $high += $w;
+            }
+        }
+        if ($sessions->isEmpty()) return null;
+        if ($total == 0) return 100.0;
+        return round(100 * (1 - $high / $total), 1);
+    }
+
+    // §3.6 consistency over the last 8 scheduled sessions
+    public function consistency(Collection $sessions): ?float
+    {
+        $last = $sessions->sortByDesc('session_id')->take(8);
+        if ($last->isEmpty()) return null;
+        $attended = $last->filter(fn ($s) => in_array($s->attendance_status, ['P', 'L'], true))->count();
+        return round($attended / $last->count() * 100, 1);
+    }
+
+    // §3.7 review depth over the last 4 weeks (uses session_type — [BUILD] decision I2)
+    public function reviewDepth(Collection $sessions): ?float
+    {
+        $since = Carbon::now()->subWeeks(4)->toDateString();
+        $recent = $sessions->filter(fn ($s) => $s->session_date >= $since);
+        $new = 0.0; $review = 0.0;
+        foreach ($recent as $s) {
+            $p = (float) $s->pages_memorized;
+            match ($s->session_type) {
+                'REVIEW' => $review += $p,
+                'MIXED' => [$new += $p / 2, $review += $p / 2],
+                default => $new += $p,
+            };
+        }
+        // Undefined with no new pages to divide by — the student is excluded from the
+        // review-depth leaderboard rather than being ranked on a fabricated number.
+        if ($new == 0) return null;
+        return round($review / $new, 2);
+    }
+
+    public function attendanceRate(Collection $sessions): float
+    {
+        if ($sessions->isEmpty()) return 0.0;
+        return round($sessions->filter(fn ($s) => in_array($s->attendance_status, ['P', 'L'], true))->count() / $sessions->count(), 3);
+    }
+
+    public function meanErrorDensity(Collection $sessions): float
+    {
+        $d = $sessions->map(fn ($s) => $this->errorDensity($s))->filter(fn ($x) => $x !== null);
+        return $d->isEmpty() ? 0.0 : round($d->avg(), 3);
+    }
+
+    public function totalNewPages(Collection $sessions): float
+    {
+        return $sessions->sum(fn ($s) => match ($s->session_type) { 'REVIEW' => 0, 'MIXED' => $s->pages_memorized / 2, default => $s->pages_memorized });
+    }
+
+    /** Full metric bundle for a student (FR7–FR9). */
+    public function metrics(Student $student): array
+    {
+        $sessions = $this->sessions($student);
+        $newPages = $this->totalNewPages($sessions);
+        return [
+            'student_id' => $student->student_id,
+            'mastery' => $this->mastery($sessions),
+            'momentum' => $this->momentum($sessions),
+            'precision' => $this->precision($sessions),
+            'consistency' => $this->consistency($sessions),
+            'review_depth' => $this->reviewDepth($sessions),
+            'attendance_rate' => $this->attendanceRate($sessions),
+            'error_density' => $this->meanErrorDensity($sessions),
+            'sessions_count' => $sessions->count(),
+            'total_pages' => round((float) $sessions->sum('pages_memorized'), 2),
+            'total_new_pages' => round($newPages, 2),
+            'pages_in_current_juz' => round(fmod($newPages, 20), 2),   // [BUILD] provisional: 20 pages per Juz
+            'weekly_pages' => $this->weeklyPages($sessions),
+            'constants' => ['d_max' => SystemSetting::num('d_max', 3.0), 'alpha' => SystemSetting::num('alpha', 0.4), 'provisional' => true],
+        ];
+    }
+}
