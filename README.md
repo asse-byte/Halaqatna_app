@@ -32,22 +32,45 @@ bridge and are never published. Only the `nginx` service declares `ports:`.
 
 ## Running
 
-### Production — Docker Compose
+### Just show me the system — one command
 
 ```bash
-cd docker && docker compose up --build
+bash scripts/dev_up.sh          # then open http://localhost:3000
+```
+
+Needs only **PHP 8.2+, Composer and Node 18+**. It installs what is missing, writes
+`api/.env` for you, creates a SQLite database, seeds the demo circles, and starts both
+servers. Ctrl-C stops them. The sign-in details are printed on screen.
+
+This path deliberately skips MySQL, Docker and the Python service, because none of them are
+worth installing to look at the system. The one thing it cannot show is the live forecast
+(FR10): without the ML container the API behaves exactly as UC13 specifies — it keeps working
+and shows the last stored forecast with a staleness notice. Everything else runs in full.
+
+### Production — Docker Compose
+
+nginx listens on 443 only (NFR4), so it will not start without a certificate. Generate a
+self-signed one for local use, build the web client, then bring the stack up:
+
+```bash
+bash scripts/make_dev_certs.sh        # writes docker/nginx/certs/ — development only
+cd frontend && npm install && npm run build && cd ..
+cd docker && DB_ROOT_PASSWORD=... ML_DB_PASSWORD=... docker compose up --build
 ```
 
 Edit `api/.env.docker` and `docker/mysql/init.sql` first: both ship with placeholder secrets.
-Set `DB_ROOT_PASSWORD` and `ML_DB_PASSWORD` in the environment Compose reads. Then create the
-schema and apply the least-privilege grants:
+Then create the schema and apply the least-privilege grants:
 
 ```bash
 DB_HOST=db GRANT_HOST='%' DB_ADMIN_PASSWORD=... API_DB_PASSWORD=... ML_DB_PASSWORD=... \
   bash scripts/db_setup.sh
 ```
 
-### Development
+Open `https://localhost`. The browser will warn that the certificate is not trusted — that is
+what self-signed means, and it is expected. Replace the two files in `docker/nginx/certs/`
+with a real certificate for anything a real user can reach.
+
+### Development — each piece by hand
 
 ```bash
 # 1. API
@@ -76,7 +99,7 @@ SDK 52 versions — change them with `npx expo install`, never by hand, or the b
 ### Tests
 
 ```bash
-cd api && php artisan test                   # 95 feature + unit tests, 509 assertions
+cd api && php artisan test                   # 120 feature + unit tests, 799 assertions
 cd api && php artisan test --coverage --min=70   # NFR9 — needs pcov or Xdebug
 node scripts/check_locales.js                # NFR6: ar/en key parity
 node --test scripts/check_offline_queue.mjs  # UC10 alternative flow 5a
