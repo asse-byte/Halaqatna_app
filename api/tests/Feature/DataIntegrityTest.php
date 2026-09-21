@@ -72,14 +72,16 @@ class DataIntegrityTest extends TestCase
      */
     public function test_a_non_teacher_cannot_be_assigned_to_a_student(): void
     {
-        $sys = $this->token('sys@x.sa');
+        // The roster belongs to the Circle Supervisor (Table 1.1), so it is that role that
+        // exercises this constraint — the System Administrator no longer reaches student rows.
+        $admin = $this->token('a1@x.sa');
 
-        // A Circle Administrator is staff, and in the right circle, but is not a teacher.
-        $this->as($sys)->patchJson("/api/students/{$this->s1->student_id}", [
+        // A Circle Supervisor is staff, and in the right circle, but is not a teacher.
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", [
             'teacher_ids' => [$this->admin1->user_id],
         ])->assertStatus(422);
 
-        $this->as($sys)->patchJson("/api/students/{$this->s1->student_id}", [
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", [
             'teacher_ids' => [$this->t1->user_id],
         ])->assertOk();
 
@@ -96,7 +98,7 @@ class DataIntegrityTest extends TestCase
     {
         $other = $this->staff('t3@x.sa', 'TEACHER', $this->c2->circle_id);
 
-        $this->as($this->token('sys@x.sa'))
+        $this->as($this->token('a1@x.sa'))
             ->patchJson("/api/students/{$this->s1->student_id}", ['teacher_ids' => [$other->user_id]])
             ->assertStatus(422);
     }

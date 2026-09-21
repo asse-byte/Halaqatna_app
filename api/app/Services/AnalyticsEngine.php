@@ -43,6 +43,19 @@ class AnalyticsEngine
         return round(100 * (1 - min(1, $dMean / $dMax)), 1);
     }
 
+    /**
+     * The §3.3 formula applied to one session, so a history row can show how accurate that
+     * day's recitation was as a plain percentage instead of the weighted load E(s).
+     * It is the same arithmetic, not a second measure.
+     */
+    public function sessionAccuracy(RecitationSession $s): ?float
+    {
+        $d = $this->errorDensity($s);
+        if ($d === null) return null;
+
+        return round(100 * (1 - min(1, $d / SystemSetting::num('d_max', 3.0))), 1);
+    }
+
     /** Pages per ISO week, filled from the first session week to the current week. */
     public function weeklyPages(Collection $sessions, ?callable $filter = null): array
     {
@@ -132,13 +145,80 @@ class AnalyticsEngine
         return $sessions->sum(fn ($s) => match ($s->session_type) { 'REVIEW' => 0, 'MIXED' => $s->pages_memorized / 2, default => $s->pages_memorized });
     }
 
+    /**
+     * Week-by-week progress line — the rising or falling curve on the student screens.
+     *
+     * Two series, both already defined by the report, plotted against the same weeks:
+     *   pages — new and reviewed pages recorded that week (FR8's raw input);
+     *   level — the §3.3 Mastery formula evaluated as at the end of that week, over the
+     *           eight sessions up to that point.
+     *
+     * The line climbs when errors per page fall and stays up while they stay low, and the
+     * bars grow as the student covers more pages. No new coefficient is introduced: every
+     * number here comes out of a formula already listed in Table 3.4, so the graph adds a
+     * view of the data and not another provisional constant to defend.
+     */
+    public function trend(Collection $sessions): array
+    {
+        if ($sessions->isEmpty()) return [];
+        $ordered = $sessions->sortBy('session_date')->values();
+        $weeks = [];
+        foreach ($this->weeklyPages($ordered) as $week => $pages) {
+            $upTo = $ordered->filter(fn ($s) => Carbon::parse($s->session_date)->startOfWeek()->toDateString() <= $week);
+            $inWeek = $ordered->filter(fn ($s) => Carbon::parse($s->session_date)->startOfWeek()->toDateString() === $week);
+            $weeks[] = [
+                'week' => $week,
+                'pages' => round((float) $pages, 2),
+                'level' => $this->mastery($upTo),
+                'errors' => (int) $inWeek->sum(fn ($s) => $s->errors->count()),
+                'sessions' => $inWeek->count(),
+            ];
+        }
+
+        return $weeks;
+    }
+
+    /**
+     * Plain reading of that curve: is the student climbing, holding steady, or slipping?
+     *
+     * The last four weeks are compared with the four before them, on both series. A change
+     * smaller than three points of level and a quarter of a page a week is called steady,
+     * so ordinary week-to-week noise is not reported to a child as a decline.
+     */
+    public function trendDirection(array $trend): array
+    {
+        $recent = array_slice($trend, -4);
+        $earlier = array_slice($trend, -8, 4);
+        $mean = function (array $rows, string $key): ?float {
+            $vals = array_values(array_filter(array_column($rows, $key), fn ($v) => $v !== null));
+            return $vals ? array_sum($vals) / count($vals) : null;
+        };
+        if (count($trend) < 4 || !$earlier) {
+            return ['direction' => 'NEW', 'level_change' => null, 'pages_change' => null];
+        }
+        $dLevel = ($mean($recent, 'level') ?? 0) - ($mean($earlier, 'level') ?? 0);
+        $dPages = ($mean($recent, 'pages') ?? 0) - ($mean($earlier, 'pages') ?? 0);
+        $up = $dLevel > 3 || $dPages > 0.25;
+        $down = $dLevel < -3 || $dPages < -0.25;
+
+        return [
+            'direction' => $up && !$down ? 'UP' : ($down && !$up ? 'DOWN' : 'STEADY'),
+            'level_change' => round($dLevel, 1),
+            'pages_change' => round($dPages, 2),
+        ];
+    }
+
     /** Full metric bundle for a student (FR7–FR9). */
     public function metrics(Student $student): array
     {
         $sessions = $this->sessions($student);
         $newPages = $this->totalNewPages($sessions);
+        $trend = $this->trend($sessions);
         return [
             'student_id' => $student->student_id,
+            'trend' => $trend,
+            'trend_summary' => $this->trendDirection($trend),
+            'error_count' => (int) $sessions->sum(fn ($s) => $s->errors->count()),
             'mastery' => $this->mastery($sessions),
             'momentum' => $this->momentum($sessions),
             'precision' => $this->precision($sessions),

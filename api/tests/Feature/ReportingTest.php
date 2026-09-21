@@ -31,7 +31,7 @@ class ReportingTest extends TestCase
     {
         $t = $this->token('t1@x.sa');
         $this->logSession($t, $this->s1->student_id, '2026-02-02', 3, [1, 3]);          // MEM_GAP + TAJ_ERR
-        $this->logSession($t, $this->s1->student_id, '2026-02-04', 2, [2], 'L');        // LNK_ERR, late
+        $this->logSession($t, $this->s1->student_id, '2026-02-04', 2, [2]);             // LNK_ERR
     }
 
     // ---- FR14: student term report ----

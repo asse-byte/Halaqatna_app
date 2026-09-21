@@ -46,6 +46,7 @@ class StaffUser extends Model
     {
         return [
             'user_id' => $this->user_id, 'name' => $this->name, 'email' => $this->email,
+            'phone' => $this->phone, 'address' => $this->address,
             'role' => $this->roleCode(), 'circle_id' => $this->circle_id, 'locale' => $this->locale,
             'is_active' => $this->is_active,
         ];

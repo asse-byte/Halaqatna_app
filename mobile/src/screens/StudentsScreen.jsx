@@ -15,6 +15,10 @@ export default function StudentsScreen({ navigation, onLogout }) {
   return (
     <View style={s.wrap}>
       <View style={s.head}><Text style={s.title}>{t("my_students")}</Text><Pressable onPress={logout}><Text style={s.link}>{t("logout")}</Text></Pressable></View>
+      {/* FR4 — the register is one tap away, and is never reached through a recitation form. */}
+      <Pressable testID="go-attendance" style={[s.btn, s.ghost, { marginBottom: 12 }]} onPress={() => navigation.navigate("Attendance")}>
+        <Text>{t("attendance_title")}</Text>
+      </Pressable>
       <FlatList data={rows} keyExtractor={(x) => String(x.student_id)} renderItem={({ item }) => (
         <View style={s.card} testID={`student-card-${item.student_id}`}>
           <Text style={s.name}>{item.name}</Text>

@@ -32,18 +32,21 @@ class ShareController extends Controller
         return 'NEEDS_WORK';
     }
 
-    /** UC25 — issue a link. Only the student's own teacher (or the circle admin / Sys Admin). */
+    /** UC25 — issue a link. Only the student's own teacher, or their Circle Supervisor. */
     public function issue(Request $r, int $id)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['TEACHER', 'CIRCLE_ADMIN', 'SYS_ADMIN']);
+        $this->rbac->requireRole($a, ['TEACHER', 'CIRCLE_ADMIN']);
         $days = (int) $r->input('days', 30);   // §2.13 default expiry: 30 days
-        $link = $this->rbac->issueShareLink($a, Student::findOrFail($id), $days > 0 ? $days : 30);
+        $student = Student::findOrFail($id);
+        $link = $this->rbac->issueShareLink($a, $student, $days > 0 ? $days : 30);
         $this->audit->log($a, 'CREATE', 'progress_share_link', $link->link_id, ['student_id' => $id, 'expires_at' => (string) $link->expires_at]);
 
         return response()->json([
             'link_id' => $link->link_id,
             'url' => url('/p/'.$link->token),
+            'report_url' => url('/p/'.$link->token.'/report.pdf'),
+            'guardian_phone' => $student->guardian_phone,
             'expires_at' => $link->expires_at,
         ], 201);
     }
@@ -58,10 +61,41 @@ class ShareController extends Controller
         return response()->json($link ? [
             'link_id' => $link->link_id,
             'url' => url('/p/'.$link->token),
+            'report_url' => url('/p/'.$link->token.'/report.pdf'),
+            'guardian_phone' => $student->guardian_phone,
             'expires_at' => $link->expires_at,
             'view_count' => $link->view_count,
             'last_viewed_at' => $link->last_viewed_at,
         ] : null);
+    }
+
+    /**
+     * UC26 — the guardian downloads the full performance report behind the same token.
+     *
+     * FR15 already authorises the teacher to hand a parent this exact PDF; sending it over
+     * WhatsApp is that hand-over, carried by a link so a phone can open it. The token keeps
+     * the controls §2.13 put on the card: it expires, it is revocable, an unknown or retired
+     * token is a flat 404, and every download is audited. The parent still holds no account.
+     */
+    public function reportPdf(Request $r, string $token, \App\Services\ReportService $reports)
+    {
+        $link = $this->rbac->resolveShareToken($token);
+        $student = $link->student()->firstOrFail();
+        $locale = in_array($r->query('lang'), ['ar', 'en'], true) ? $r->query('lang') : ($student->locale ?: 'ar');
+
+        $link->increment('view_count');
+        $link->last_viewed_at = now();
+        $link->save();
+        $this->audit->anonymous('VIEW', 'progress_share_link', $link->link_id, [
+            'student_id' => $student->student_id, 'ip' => $r->ip(), 'artifact' => 'student_report_pdf',
+        ]);
+
+        return response()->file($reports->studentPdf($student, $locale), [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="halaqtna_report.pdf"',
+            'X-Robots-Tag' => 'noindex, nofollow, noarchive',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 
     /** UC25 — revoke. The teacher who created it can revoke it at any time (§2.13). */
@@ -123,7 +157,7 @@ class ShareController extends Controller
 
         // noindex header + meta tag in the view, so the page is never indexed (§2.13).
         return response()
-            ->view('share.card', ['card' => $card, 'locale' => $locale, 'expires_at' => $link->expires_at])
+            ->view('share.card', ['card' => $card, 'locale' => $locale, 'expires_at' => $link->expires_at, 'token' => $token])
             ->header('X-Robots-Tag', 'noindex, nofollow, noarchive')
             ->header('Referrer-Policy', 'no-referrer')
             ->header('Cache-Control', 'no-store, private');

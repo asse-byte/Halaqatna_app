@@ -98,9 +98,9 @@ ten students with roughly six weeks of synthetic sessions.
 | Role | Identifier | Password |
 |---|---|---|
 | System Administrator | `SYS_ADMIN_EMAIL` from `api/.env` | `SYS_ADMIN_PASSWORD` from `api/.env` |
-| Circle Administrator | `admin.nafi@halaqtna.sa` · `admin.kathir@halaqtna.sa` | `Pass#2026` |
+| Circle Administrator (shown in Arabic as مشرف الحلقة) | `admin.nafi@halaqtna.sa` · `admin.kathir@halaqtna.sa` | `Pass#2026` |
 | Teacher | `teacher.ahmad@halaqtna.sa` · `teacher.yousef@halaqtna.sa` · `teacher.saad@halaqtna.sa` | `Pass#2026` |
-| Student (access code) | `STU1AB2C` … `STU8QR9S` (circle 1), `STU9ST2U` · `STUAUV3W` (circle 2) | — |
+| Student (access code) | `NUR482` `HDY365` `FLH927` `RSD634` `TQW258` `BRK743` `SKN519` `YSR386` (circle 1), `MJD472` · `WLD638` (circle 2) | — |
 
 > These are **development fixtures with published passwords.** Never seed them into a
 > deployment reachable by a real user. The seeded session data is **synthetic**: no figure
@@ -112,11 +112,11 @@ ten students with roughly six weeks of synthetic sessions.
 
 | # | Rule | Enforcement |
 |---|---|---|
-| 1 | Four actors | `role` enum (`SYS_ADMIN`, `CIRCLE_ADMIN`, `TEACHER`) + the separate student path |
+| 1 | Four actors | `role` enum (`SYS_ADMIN`, `CIRCLE_ADMIN`, `TEACHER`) + the separate student path. `CIRCLE_ADMIN` reads **مشرف الحلقة** in Arabic; the English name and the stored code are unchanged |
 | 2 | Two auth paths; `Student` is **not** a subclass of `User` | `AuthRbacService::staffLogin` (bcrypt + JWT) and `studentLogin` (access code). `student` has no email and no `password_hash` |
 | 3 | Derived values are never stored | computed on read in `AnalyticsEngine`; total XP is `SUM(xp_ledger.points)` |
 | 4 | `audit_log` and `xp_ledger` are append-only | `scripts/db_grants.sql` grants the API user SELECT + INSERT only; `db_setup.sh` verifies it and fails if UPDATE or DELETE is present |
-| 5 | One component makes every authorization decision | `app/Services/AuthRbacService.php`; middleware and controllers only call it |
+| 5 | One component makes every authorization decision | `app/Services/AuthRbacService.php`; middleware and controllers only call it. Per Table 1.1 the System Administrator's remit (circles, supervisors, settings, audit) and the Circle Supervisor's (teachers, students, sessions, reports) are **disjoint**: `requireCircleAccess` refuses `SYS_ADMIN` outright |
 | 6 | The ML service is a separate container, internal HTTP only | `MlClient`, with the UC13 fallback on timeout; `ml` declares no `ports:` |
 | 7 | Schema stays in 3NF | the error weight lives once, in `error_type`; `session_error` has no weight column |
 | 8 | All numeric constants are provisional | stored in `system_setting` (UC3), calibrated in P10, never presented as results |
@@ -128,15 +128,28 @@ ten students with roughly six weeks of synthetic sessions.
 ```
 POST   /api/auth/login                 FR1    staff email+password → JWT
 POST   /api/auth/student-login         FR2    {access_code} → student token
-POST   /api/students/{id}/access-code  FR3    regenerate (teacher only)
+POST   /api/students/{id}/access-code  FR3    rotate (teacher / circle supervisor)
 
-GET    /api/circles                    FR19
+GET    /api/me/profile                 FR22   staff self-service: own details
+PATCH  /api/me/profile                 FR22   audited (FR18); role, circle and status are not editable here
+POST   /api/me/password                FR22   requires the current password
+
+GET    /api/circles                    FR19   deployment administration
 POST   /api/circles                    FR19
-GET    /api/circles/{id}/roster        FR20
-POST   /api/teachers                   FR20
-POST   /api/students                   FR20
+DELETE /api/circles/{id}               FR19   refused while the circle still has people in it
+POST   /api/circle-admins              FR19   the only people the System Administrator deals with
 
+GET    /api/circles/{id}/roster        FR20   circle supervisor and teachers only
+GET    /api/circles/{id}/dashboard     FR14   the circle at a glance; scoped to the caller
+POST   /api/teachers                   FR20   circle supervisor only
+POST   /api/students                   FR20   circle supervisor only — a teacher cannot enrol
+DELETE /api/students/{id}              FR20   refused once the student has recorded sessions
+
+GET    /api/attendance?session_date=   FR4    the register for one day
+POST   /api/attendance                 FR4    several students at once; P / A / E
+GET    /api/surahs                     FR5    114 Surahs with names and ayah counts
 POST   /api/sessions                   FR4, FR5, FR6   body includes errors[]
+PUT    /api/sessions/{id}              FR5, FR6, FR18  correct a session; XP settled by an ADJUST entry
 GET    /api/students/{id}/metrics      FR7, FR8, FR9
 GET    /api/students/{id}/prediction   FR10
 GET    /api/circles/{id}/leaderboard?criterion=momentum|precision|consistency|review_depth   FR11
@@ -146,9 +159,10 @@ GET    /api/circles/{id}/report        FR14
 GET    /api/students/{id}/report.pdf   FR15
 GET    /api/audit                      FR18   (System Administrator only)
 
-POST   /api/students/{id}/share-link   FR21   create (teacher only) → {link_id, url, expires_at}
+POST   /api/students/{id}/share-link   FR21   create (teacher / supervisor) → {link_id, url, report_url, guardian_phone, expires_at}
 DELETE /api/share-links/{link_id}      FR21   revoke
 GET    /p/{token}                      FR21   public read-only card; no auth; 404 if unknown/expired/revoked
+GET    /p/{token}/report.pdf           FR15   the full report for the guardian, behind the same token
 ```
 
 **Internal only, never published:**
@@ -172,6 +186,9 @@ POST   http://ml:8000/evaluate    NFR10 held-out evaluation, split by student
 | I4 | Stopping the `ml` container does not prevent logging a session; the last forecast is shown with its `generated_at` and a staleness notice | `RbacTest`, `MlClient` |
 | I5 | Four independent leaderboards; expired **and** revoked tokens both 404; the card leaks nothing; every view is audited | `DataIntegrityTest.php`, `ShareLinkTest.php` |
 | I6 | ar/en parity, no untranslated string | `node scripts/check_locales.js` |
+| — | The System Administrator reaches no circle data; a teacher cannot enrol a student | `api/tests/Feature/RbacTest.php` |
+| — | The register is P/A/E only; a session can be corrected and its XP settled by an ADJUST entry | `api/tests/Feature/AttendanceAndCorrectionTest.php` |
+| — | The Arabic PDF embeds a composite Arabic font and names the Surah rather than printing its number | `api/tests/Feature/ArabicPdfTest.php` |
 
 ---
 
@@ -181,3 +198,11 @@ See **[docs/CPIT-499-report-changes.md](docs/CPIT-499-report-changes.md)** — t
 changes (including `session_type`, which changes Figure 4.7), the provisional constants, the
 FR21 scope change of §12 with the recorded I5 decision, the §5.1 rate-limiting rationale, and
 the NFR10 evaluation protocol.
+
+For the second review round — the System Administrator / Circle Supervisor boundary, the plain
+-language vocabulary, the Arabic PDF fix, the register, the short access codes and the guardian's
+WhatsApp delivery — see §9 of that file, and
+**[docs/مطابقة-التعديلات-للتقرير.md](docs/مطابقة-التعديلات-للتقرير.md)**, which maps every one of
+those changes to the requirement it touches and states, in Arabic, whether it is compliant with
+CPIT-498, a correction of code that had drifted wider than the report, or an addition that needs a
+new line in it.
