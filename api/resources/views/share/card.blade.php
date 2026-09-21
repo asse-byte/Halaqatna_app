@@ -9,7 +9,8 @@
             'of' => 'من', 'sessions' => 'جلسة',
             'footer' => 'بطاقة للاطّلاع فقط أصدرها معلّم الحلقة. لا تحتوي على ترتيب الطالب ولا تفاصيل الأخطاء.',
             'expires' => 'تنتهي صلاحية الرابط في', 'other_lang' => 'English',
-            'bands' => ['EXCELLENT' => 'ممتاز', 'STRONG' => 'جيد جدًا', 'DEVELOPING' => 'في تحسّن', 'NEEDS_WORK' => 'يحتاج إلى مراجعة', 'NO_DATA' => 'لا توجد بيانات بعد'],
+            'report' => 'تحميل تقرير الأداء الكامل (PDF)',
+            'bands' => ['EXCELLENT' => 'ممتاز', 'STRONG' => 'جيد جدًا', 'DEVELOPING' => 'متوسط', 'NEEDS_WORK' => 'يحتاج إلى مراجعة', 'NO_DATA' => 'لا توجد بيانات بعد'],
         ],
         'en' => [
             'app' => 'Halaqtna', 'title' => 'Weekly progress card', 'juz' => 'Current Juz',
@@ -18,7 +19,8 @@
             'of' => 'of', 'sessions' => 'sessions',
             'footer' => 'Read-only card issued by the circle teacher. It carries no ranking and no error detail.',
             'expires' => 'Link expires on', 'other_lang' => 'العربية',
-            'bands' => ['EXCELLENT' => 'Excellent', 'STRONG' => 'Strong', 'DEVELOPING' => 'Developing', 'NEEDS_WORK' => 'Needs review', 'NO_DATA' => 'No data yet'],
+            'report' => 'Download the full performance report (PDF)',
+            'bands' => ['EXCELLENT' => 'Excellent', 'STRONG' => 'Strong', 'DEVELOPING' => 'Fair', 'NEEDS_WORK' => 'Needs review', 'NO_DATA' => 'No data yet'],
         ],
     ][$locale];
     $bandTone = ['EXCELLENT' => '#0f7b6c', 'STRONG' => '#2f6f4f', 'DEVELOPING' => '#8a6d1f', 'NEEDS_WORK' => '#9a4b2f', 'NO_DATA' => '#5b6472'][$card['mastery_band']];
@@ -56,6 +58,8 @@
                 font-size:15px; font-weight:700; color:#fff; background:{{ $bandTone }}; }
         .eta { margin-top:12px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
         .eta .v { font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; }
+        .report { display:block; margin-top:16px; padding:14px 16px; border-radius:12px; background:var(--brand);
+                  color:#fff; text-decoration:none; font-weight:700; font-size:15px; text-align:center; }
         .foot { margin-top:18px; font-size:12px; line-height:1.6; color:var(--muted); text-align:center; }
         @media (max-width:360px) { .grid { grid-template-columns:1fr; } body { padding:16px 12px; } }
     </style>
@@ -97,6 +101,8 @@
             <div class="k" style="font-size:12px;color:var(--muted)">{{ $s['eta'] }}</div>
             <div class="v" dir="ltr" data-testid="share-eta">{{ $card['predicted_completion_date'] ?? $s['eta_none'] }}</div>
         </div>
+        {{-- FR15 — the full report, behind the same token, expiry and revocation. --}}
+        <a class="report" data-testid="share-report-link" href="{{ url('/p/'.$token.'/report.pdf').'?lang='.$locale }}">{{ $s['report'] }}</a>
     </div>
 
     <p class="foot">

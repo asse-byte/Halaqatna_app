@@ -1,14 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { CloudOff, Plus, Save } from "lucide-react";
+import { CloudOff, Save } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
-import { ATT_STYLES, btnGhost, btnPrimary, ERROR_STYLES, ErrorChip, Field, inputCls, PageTitle } from "../../components/ui-kit";
+import { btnGhost, btnPrimary, ErrorChip, Field, inputCls, PageTitle } from "../../components/ui-kit";
 import { flushQueue, queueSession, readQueue } from "../../lib/offline";
+import { ayahCount, surahName, SURAH_NUMBERS } from "../../lib/surahs";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Recording a recitation (FR5, FR6).
+ *
+ * Three things changed from the first build, all of them about what a teacher can work with
+ * on a phone in the middle of a circle:
+ *
+ *  - the Surah is chosen from a list of names, not typed as a number. Nobody recalls that
+ *    Al-Ghashiyah is 88, and the ayah field is bounded by the Surah actually picked;
+ *  - the weighted load E(s) is gone. It is the Analytics Engine's intermediate value, it
+ *    told the teacher nothing, and the count of notes says everything the screen needs to;
+ *  - attendance moved out to its own page, and the session is new memorization or review.
+ *    "Mixed" was removed: no teacher could say where one ended and the other began.
+ */
 export default function LogSession() {
   const { t, locale } = useT();
   const nav = useNavigate();
@@ -17,27 +31,56 @@ export default function LogSession() {
   const [types, setTypes] = useState([]);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(readQueue().length);
-  const [f, setF] = useState({ student_id: params.get("student") || "", session_date: today(), attendance_status: "P", session_type: "NEW", surah_from: 1, ayah_from: 1, surah_to: 1, ayah_to: 7, pages_memorized: 1, errors: [] });
+  const [sameSurah, setSameSurah] = useState(true);
+  const [f, setF] = useState({
+    student_id: params.get("student") || "", session_date: today(), attendance_status: "P", session_type: "NEW",
+    surah_from: 1, ayah_from: 1, surah_to: 1, ayah_to: 7, pages_memorized: 1, errors: [],
+  });
   const [ayahRef, setAyahRef] = useState("");
 
-  useEffect(() => { Promise.all([api.get("/students"), api.get("/error-types")]).then(([s, e]) => { setStudents(s.data.filter((x) => x.is_active)); setTypes(e.data); if (!f.student_id && s.data[0]) set("student_id", s.data[0].student_id); }); }, []);
-  useEffect(() => { const sync = () => flushQueue(api).then((n) => { setPending(readQueue().length); if (n) toast.success(`${t("synced")}: ${n}`); }); window.addEventListener("online", sync); sync(); return () => window.removeEventListener("online", sync); }, []);
+  useEffect(() => {
+    Promise.all([api.get("/students"), api.get("/error-types")]).then(([s, e]) => {
+      const active = s.data.filter((x) => x.is_active);
+      setStudents(active);
+      setTypes(e.data);
+      if (!params.get("student") && active[0]) set("student_id", active[0].student_id);
+    }).catch((err) => toast.error(errMsg(err)));
+  }, []);
+  useEffect(() => {
+    const sync = () => flushQueue(api).then((n) => { setPending(readQueue().length); if (n) toast.success(`${t("synced")}: ${n}`); });
+    window.addEventListener("online", sync); sync();
+    return () => window.removeEventListener("online", sync);
+  }, []);
 
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const load = useMemo(() => f.errors.reduce((a, e) => a + Number(types.find((x) => x.error_type_id === e.error_type_id)?.weight || 0), 0), [f.errors, types]);
-  const addError = (type) => setF((x) => ({ ...x, errors: [...x.errors, { error_type_id: type.error_type_id, ayah_ref: ayahRef || `${x.surah_from}:${x.ayah_from}` }] }));
+
+  /** Keep the end of the range inside the Surah chosen for it. */
+  const pickSurah = (key, n) => setF((x) => {
+    const next = { ...x, [key]: n };
+    if (key === "surah_from") {
+      next.ayah_from = Math.min(x.ayah_from, ayahCount(n)) || 1;
+      if (sameSurah) { next.surah_to = n; next.ayah_to = Math.min(x.ayah_to, ayahCount(n)) || 1; }
+    } else {
+      next.ayah_to = Math.min(x.ayah_to, ayahCount(n)) || 1;
+    }
+    return next;
+  });
+  const toggleSameSurah = (on) => { setSameSurah(on); if (on) pickSurah("surah_to", f.surah_from); };
+
+  const addError = (type) => setF((x) => ({ ...x, errors: [...x.errors, { error_type_id: type.error_type_id, ayah_ref: ayahRef || String(x.ayah_from) }] }));
+  const surahOptions = useMemo(() => SURAH_NUMBERS.map((n) => [n, `${n}. ${surahName(n, locale)}`]), [locale]);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const body = { ...f, student_id: Number(f.student_id), client_uuid: crypto.randomUUID() };
+    const body = { ...f, student_id: Number(f.student_id), surah_to: sameSurah ? f.surah_from : f.surah_to, client_uuid: crypto.randomUUID() };
     try {
       const { data } = await api.post("/sessions", body);
       toast.success(t("session_saved"));
       if (data.awards?.new_badges?.length) toast(`${t("new_badges")} ${data.awards.new_badges.map((b) => (locale === "ar" ? b.name_ar : b.name_en)).join("، ")}`);
       nav(`/staff/students/${body.student_id}`);
     } catch (err) {
-      if (!err.response) { queueSession(body); setPending(readQueue().length); toast.warning(t("queued_offline")); nav("/teacher"); }
+      if (!err.response) { queueSession(body); setPending(readQueue().length); toast.warning(t("queued_offline")); nav("/teacher/students"); }
       else toast.error(errMsg(err));
     } finally { setBusy(false); }
   };
@@ -45,41 +88,103 @@ export default function LogSession() {
   return (
     <div className="mx-auto w-full max-w-lg overflow-x-hidden" data-testid="log-session-page">
       <PageTitle title={t("log_session_title")} />
-      {pending > 0 && <div className="glass mb-4 flex items-center justify-between rounded-xl px-3 py-2 text-sm" data-testid="pending-sync-banner"><span className="flex items-center gap-2"><CloudOff size={14} />{pending} {t("pending_sync")}</span><button className={btnGhost} data-testid="sync-now-button" onClick={() => flushQueue(api).then(() => setPending(readQueue().length))}>{t("sync_now")}</button></div>}
-      <form onSubmit={submit} className="space-y-5 pb-24" data-testid="session-form">
-        <Field label={t("select_student")}><select data-testid="session-student-select" className={inputCls} value={f.student_id} onChange={(e) => set("student_id", e.target.value)} required>{students.map((s) => <option key={s.student_id} value={s.student_id}>{s.name}</option>)}</select></Field>
-        <Field label={t("session_date")}><input data-testid="session-date-input" className={inputCls} type="date" value={f.session_date} onChange={(e) => set("session_date", e.target.value)} required /></Field>
+      {pending > 0 && (
+        <div className="glass mb-4 flex items-center justify-between rounded-xl px-3 py-2 text-sm" data-testid="pending-sync-banner">
+          <span className="flex items-center gap-2"><CloudOff size={14} />{pending} {t("pending_sync")}</span>
+          <button className={btnGhost} data-testid="sync-now-button" onClick={() => flushQueue(api).then(() => setPending(readQueue().length))}>{t("sync_now")}</button>
+        </div>
+      )}
 
-        <div><div className="mb-1 text-xs font-semibold text-muted-foreground">{t("attendance")}</div>
-          <div className="grid grid-cols-4 gap-2">{["P", "L", "E", "A"].map((a) => <button type="button" key={a} data-testid={`attendance-${a}`} onClick={() => set("attendance_status", a)} className={`chip justify-center border ${ATT_STYLES[a]} ${f.attendance_status === a ? "ring-2 ring-primary" : "opacity-70"}`}>{t(`att_${a}`)}</button>)}</div></div>
+      <form onSubmit={submit} className="space-y-5 pb-28" data-testid="session-form">
+        <Field label={t("select_student")}>
+          <select data-testid="session-student-select" className={inputCls} value={f.student_id} onChange={(e) => set("student_id", e.target.value)} required>
+            {students.map((s) => <option key={s.student_id} value={s.student_id}>{s.name}</option>)}
+          </select>
+        </Field>
+        <Field label={t("session_date")}>
+          <input data-testid="session-date-input" className={inputCls} type="date" max={today()} value={f.session_date} onChange={(e) => set("session_date", e.target.value)} required />
+        </Field>
 
-        <div><div className="mb-1 text-xs font-semibold text-muted-foreground">{t("session_type")}</div>
-          <div className="grid grid-cols-3 gap-2">{["NEW", "REVIEW", "MIXED"].map((a) => <button type="button" key={a} data-testid={`session-type-${a}`} onClick={() => set("session_type", a)} className={`chip justify-center ${f.session_type === a ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{t(`type_${a}`)}</button>)}</div></div>
-
-        <div><div className="mb-1 text-xs font-semibold text-muted-foreground">{t("range")}</div>
+        <div>
+          <div className="mb-1 text-xs font-semibold text-muted-foreground">{t("session_type")}</div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label={t("surah_from")}><input data-testid="surah-from-input" className={inputCls} type="number" min={1} max={114} value={f.surah_from} onChange={(e) => set("surah_from", Number(e.target.value))} /></Field>
-            <Field label={t("ayah_from")}><input data-testid="ayah-from-input" className={inputCls} type="number" min={1} max={286} value={f.ayah_from} onChange={(e) => set("ayah_from", Number(e.target.value))} /></Field>
-            <Field label={t("surah_to")}><input data-testid="surah-to-input" className={inputCls} type="number" min={1} max={114} value={f.surah_to} onChange={(e) => set("surah_to", Number(e.target.value))} /></Field>
-            <Field label={t("ayah_to")}><input data-testid="ayah-to-input" className={inputCls} type="number" min={1} max={286} value={f.ayah_to} onChange={(e) => set("ayah_to", Number(e.target.value))} /></Field>
-          </div></div>
-
-        <Field label={t("pages_memorized")}><input data-testid="pages-input" className={`${inputCls} font-mono text-lg`} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} disabled={f.attendance_status === "A"} /></Field>
-
-        <div className="glass rounded-2xl p-3" data-testid="error-tagging-panel">
-          <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold text-muted-foreground">{t("errors")} · {t("tap_to_tag")}</span><span className="font-mono text-xs" data-testid="weighted-load">E(s)={load.toFixed(2)}</span></div>
-          <input data-testid="ayah-ref-input" className={`${inputCls} mb-2 font-mono`} dir="ltr" placeholder={`${t("ayah_ref")} ${f.surah_from}:${f.ayah_from}`} value={ayahRef} onChange={(e) => setAyahRef(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">{types.map((ty) => <button type="button" key={ty.code} data-testid={`error-tag-${ty.code}`} onClick={() => addError(ty)} className={`chip justify-between border ${ERROR_STYLES[ty.code]}`}><span>{locale === "ar" ? ty.label_ar : ty.label_en}</span><span className="font-mono text-[11px]"><Plus size={10} className="inline" />{Number(ty.weight).toFixed(2)}</span></button>)}</div>
-          <div className="mt-3 flex flex-wrap gap-1.5" data-testid="tagged-errors">
-            {f.errors.length === 0 && <span className="text-xs text-muted-foreground">{t("no_errors")}</span>}
-            {f.errors.map((e, i) => <ErrorChip key={i} type={types.find((x) => x.error_type_id === e.error_type_id)} ayahRef={e.ayah_ref} testId={`tagged-error-${i}`} onRemove={() => set("errors", f.errors.filter((_, j) => j !== i))} />)}
+            {["NEW", "REVIEW"].map((a) => (
+              <button type="button" key={a} data-testid={`session-type-${a}`} onClick={() => set("session_type", a)}
+                className={`chip justify-center ${f.session_type === a ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{t(`type_${a}`)}</button>
+            ))}
           </div>
         </div>
 
-        <div className="fixed inset-x-0 bottom-14 z-10 px-4 md:static md:px-0">
-          <button data-testid="session-log-submit-button" className={`${btnPrimary} w-full shadow-xl py-3`} disabled={busy || !f.student_id}><Save size={16} />{busy ? t("saving") : t("save_session")}</button>
+        <div className="glass rounded-2xl p-3">
+          <div className="mb-2 text-xs font-semibold text-muted-foreground">{t("range")}</div>
+          <Field label={t("surah_from")}>
+            <select data-testid="surah-from-select" className={inputCls} value={f.surah_from} onChange={(e) => pickSurah("surah_from", Number(e.target.value))}>
+              {surahOptions.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+            </select>
+          </Field>
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" data-testid="same-surah-toggle" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={sameSurah} onChange={(e) => toggleSameSurah(e.target.checked)} />
+            <span>{t("same_surah")}</span>
+          </label>
+          {!sameSurah && (
+            <div className="mt-3">
+              <Field label={t("surah_to")}>
+                <select data-testid="surah-to-select" className={inputCls} value={f.surah_to} onChange={(e) => pickSurah("surah_to", Number(e.target.value))}>
+                  {surahOptions.filter(([n]) => n >= f.surah_from).map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+                </select>
+              </Field>
+            </div>
+          )}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Field label={t("ayah_from")} hint={t("ayah_max_hint", { n: ayahCount(f.surah_from) })}>
+              <input data-testid="ayah-from-input" className={inputCls} type="number" min={1} max={ayahCount(f.surah_from)} value={f.ayah_from} onChange={(e) => set("ayah_from", Number(e.target.value))} />
+            </Field>
+            <Field label={t("ayah_to")} hint={t("ayah_max_hint", { n: ayahCount(sameSurah ? f.surah_from : f.surah_to) })}>
+              <input data-testid="ayah-to-input" className={inputCls} type="number" min={1} max={ayahCount(sameSurah ? f.surah_from : f.surah_to)} value={f.ayah_to} onChange={(e) => set("ayah_to", Number(e.target.value))} />
+            </Field>
+          </div>
+        </div>
+
+        <Field label={t("pages_memorized")}>
+          <input data-testid="pages-input" className={`${inputCls} font-mono text-lg`} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} />
+        </Field>
+
+        <div className="glass rounded-2xl p-3" data-testid="error-tagging-panel">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground">{t("errors")}</span>
+            <span className="text-xs text-muted-foreground" data-testid="errors-count">{t("errors_count", { n: f.errors.length })}</span>
+          </div>
+          <div className="mb-2 text-[11px] text-muted-foreground">{t("tap_to_tag")}</div>
+          <input data-testid="ayah-ref-input" className={`${inputCls} mb-2`} inputMode="numeric" placeholder={t("ayah_ref")} value={ayahRef} onChange={(e) => setAyahRef(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            {types.map((ty) => (
+              <button type="button" key={ty.code} data-testid={`error-tag-${ty.code}`} onClick={() => addError(ty)} className={`chip justify-center border ${ERROR_BTN[ty.code]}`}>
+                {locale === "ar" ? ty.label_ar : ty.label_en}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5" data-testid="tagged-errors">
+            {f.errors.length === 0 && <span className="text-xs text-muted-foreground">{t("no_errors")}</span>}
+            {f.errors.map((e, i) => (
+              <ErrorChip key={i} type={types.find((x) => x.error_type_id === e.error_type_id)} ayahRef={e.ayah_ref} testId={`tagged-error-${i}`}
+                onRemove={() => set("errors", f.errors.filter((_, j) => j !== i))} />
+            ))}
+          </div>
+        </div>
+
+        <div className="fixed inset-x-0 bottom-16 z-10 px-4 md:static md:px-0">
+          <button data-testid="session-log-submit-button" className={`${btnPrimary} w-full py-3 shadow-xl`} disabled={busy || !f.student_id}>
+            <Save size={16} />{busy ? t("saving") : t("save_session")}
+          </button>
         </div>
       </form>
     </div>
   );
 }
+
+const ERROR_BTN = {
+  MEM_GAP: "border-red-300 text-red-800 dark:text-red-300 dark:border-red-800",
+  LNK_ERR: "border-amber-300 text-amber-800 dark:text-amber-300 dark:border-amber-800",
+  TAJ_ERR: "border-blue-300 text-blue-800 dark:text-blue-300 dark:border-blue-800",
+  SLF_CRT: "border-emerald-300 text-emerald-800 dark:text-emerald-300 dark:border-emerald-800",
+};

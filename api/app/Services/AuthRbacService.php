@@ -19,7 +19,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  */
 class AuthRbacService
 {
-    public const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    /** Letters a child cannot confuse on paper: no I/O (1/0), no Q (O), no S (5), no Z (2). */
+    public const CODE_LETTERS = 'ABCDEFGHJKLMNPRTUVWXY';
+    /** Digits with no letter lookalike: no 0 (O), no 1 (I/L). */
+    public const CODE_DIGITS = '23456789';
     public const MAX_ATTEMPTS = 5;                 // §5.1 NFR3a
     public const LOCKOUT_SECONDS = 15 * 60;
     public const STUDENT_HOURLY_MAX = 100;         // §5.1 global secondary limit, per IP
@@ -94,7 +97,9 @@ class AuthRbacService
             $this->failAttempt($key, self::MAX_ATTEMPTS, 'student_login', $context);
         }
         RateLimiter::clear($key);
-        return ['token' => $this->issue(['typ' => 'student', 'sub' => $student->student_id, 'circle_id' => $student->circle_id]), 'student' => $student];
+        // The circle comes back with the student so the dashboard can name it straight away,
+        // instead of showing a bare separator until the next page load refreshes the actor.
+        return ['token' => $this->issue(['typ' => 'student', 'sub' => $student->student_id, 'circle_id' => $student->circle_id]), 'student' => $student->load('circle')];
     }
 
     // ---------- FR21: parent progress link — read-only, expiring, revocable ----------
@@ -140,15 +145,40 @@ class AuthRbacService
     }
 
     // ---------- FR3: generate / regenerate access code (single-purpose, revocable) ----------
+
+    /**
+     * Three letters then three digits, e.g. "HKM482" — short enough for a child to
+     * remember for a month, and drawn from an alphabet with no lookalike characters.
+     *
+     * The eight-character random string it replaces was the reason teachers regenerated a
+     * code at almost every sign-in, which defeated FR3: a code nobody can retain is a code
+     * that has to be reissued, and the student is locked out whenever the teacher is away.
+     *
+     * The shorter code is a deliberate trade of keyspace for usability, and it is safe only
+     * because guessing is bounded elsewhere: MAX_ATTEMPTS failures lock an IP out for
+     * LOCKOUT_SECONDS, and STUDENT_HOURLY_MAX caps an IP at 100 tries an hour, so the
+     * ~9.3 million combinations cannot be walked. The code still grants nothing but one
+     * student's own read-only dashboard (FR16) and stays revocable on demand (NFR3).
+     */
     public function generateAccessCode(): string
     {
+        $pick = fn (string $set) => $set[random_int(0, strlen($set) - 1)];
         do {
             $code = '';
-            for ($i = 0; $i < 8; $i++) {
-                $code .= self::CODE_ALPHABET[random_int(0, strlen(self::CODE_ALPHABET) - 1)];
-            }
+            for ($i = 0; $i < 3; $i++) $code .= $pick(self::CODE_LETTERS);
+            for ($i = 0; $i < 3; $i++) $code .= $pick(self::CODE_DIGITS);
         } while (Student::where('access_code', $code)->exists());
         return $code;
+    }
+
+    /** Issues a fresh code and starts the monthly rotation clock. The old code stops working at once. */
+    public function rotateAccessCode(Student $student): string
+    {
+        $student->access_code = $this->generateAccessCode();
+        $student->access_code_issued_at = now();
+        $student->save();
+
+        return $student->access_code;
     }
 
     // ---------- Token handling ----------
@@ -193,10 +223,31 @@ class AuthRbacService
 
     public function isStaff(array $actor): bool { return $actor['type'] === 'staff'; }
 
-    /** A Circle Admin / Teacher may only touch their own circle. Sys Admin may touch any. */
+    /**
+     * FR19 / UC1–UC3, UC8 — deployment administration: circles, circle supervisors,
+     * system settings and the audit trail. This is the whole of the System Administrator's
+     * remit in Table 1.1 and the only place the role is allowed through.
+     */
+    public function requireDeploymentAdmin(array $actor): void
+    {
+        $this->requireRole($actor, ['SYS_ADMIN']);
+    }
+
+    /**
+     * Circle-scoped operational data: roster, sessions, metrics, reports, leaderboards.
+     *
+     * The System Administrator is refused here. Table 1.1 gives that role control of the
+     * deployment — it creates circles and assigns a Circle Supervisor to each — while the
+     * Supervisor is the one who manages the teachers, the students and everything measured
+     * about them. Letting the deployment administrator read a student's recitation history
+     * would put a person with no pedagogical relationship to the circle inside FR16's
+     * privacy boundary, so the two remits are kept disjoint rather than nested.
+     */
     public function requireCircleAccess(array $actor, int $circleId): void
     {
-        if ($actor['role'] === 'SYS_ADMIN') return;
+        if ($actor['role'] === 'SYS_ADMIN') {
+            throw new HttpException(403, 'A System Administrator manages circles and supervisors, not circle data');
+        }
         if ((int) $actor['circle_id'] !== $circleId) {
             throw new HttpException(403, 'Access to another circle is not permitted');
         }
@@ -219,18 +270,21 @@ class AuthRbacService
         }
     }
 
-    /** Writes on a student (sessions, access code, roster edits): Sys Admin, the circle's admin, or an assigned teacher. */
+    /** Writes on a student (sessions, access code, roster edits): the circle's supervisor, or an assigned teacher. */
     public function requireStudentManagement(array $actor, Student $student): void
     {
         if ($actor['type'] !== 'staff') throw new HttpException(403, 'Staff only');
-        if ($actor['role'] === 'SYS_ADMIN') return;
         $this->requireCircleAccess($actor, (int) $student->circle_id);
         if ($actor['role'] === 'TEACHER' && !$student->teachers()->where('staff_user.user_id', $actor['id'])->exists()) {
             throw new HttpException(403, 'This student is not assigned to you');
         }
     }
 
-    /** Staff scope used for roster/list queries. Returns null for "all circles". */
+    /**
+     * Staff scope used for circle-entity list queries (FR19 needs "all circles" for the
+     * System Administrator). It is never used to scope student or performance data —
+     * those go through requireCircleAccess, which refuses that role outright.
+     */
     public function scopeCircleId(array $actor): ?int
     {
         return $actor['role'] === 'SYS_ADMIN' ? null : (int) $actor['circle_id'];

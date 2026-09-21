@@ -136,9 +136,10 @@ class AdministrationTest extends TestCase
         $this->assertContains('t1@x.sa', $emails);
         $this->assertNotContains('a2@x.sa', $emails);   // the other circle's admin
 
-        // The System Administrator sees everyone.
+        // The System Administrator sees the circle supervisors — and only those (Table 1.1).
         $all = collect($this->as($this->token('sys@x.sa'))->getJson('/api/staff')->json())->pluck('email');
         $this->assertContains('a2@x.sa', $all);
+        $this->assertNotContains('t1@x.sa', $all);
     }
 
     /** FR20 — suspension is what "suspend a teacher" means: the account can no longer sign in. */
@@ -160,15 +161,39 @@ class AdministrationTest extends TestCase
             ->patchJson("/api/staff/{$this->sys->user_id}", ['is_active' => false])->assertForbidden();
     }
 
-    public function test_creating_a_student_issues_a_unique_eight_character_access_code(): void
+    /**
+     * FR3 — the code is short and memorable on purpose: three unambiguous letters then three
+     * digits, so a student can carry it for a month instead of asking for a new one at every
+     * sign-in. Brute force is held off by the login throttles, not by the code's length.
+     */
+    public function test_creating_a_student_issues_a_short_memorable_access_code(): void
     {
         $body = $this->as($this->token('a1@x.sa'))->postJson('/api/students', [
             'name' => 'New Student', 'circle_id' => $this->c1->circle_id, 'teacher_ids' => [$this->t1->user_id],
+            'guardian_phone' => '+966500000000', 'age' => 12, 'address' => 'Jeddah',
         ])->assertStatus(201)->json();
 
-        $this->assertSame(8, strlen($body['access_code']));
+        $this->assertMatchesRegularExpression('/^[A-HJ-NPR-Y]{3}[2-9]{3}$/', $body['access_code']);
+        $this->assertSame('+966500000000', $body['guardian_phone']);
+        $this->assertSame(12, $body['age']);
         // FR2/FR3 — the code is the student's sole credential and must work immediately.
         $this->postJson('/api/auth/student-login', ['access_code' => $body['access_code']])->assertOk();
+    }
+
+    /** FR20 — a record entered by mistake can be removed while it carries nothing to lose. */
+    public function test_a_student_with_no_sessions_can_be_deleted_but_one_with_history_cannot(): void
+    {
+        $admin = $this->token('a1@x.sa');
+        $id = $this->as($admin)->postJson('/api/students', ['name' => 'Typo', 'circle_id' => $this->c1->circle_id])
+            ->assertStatus(201)->json('student_id');
+
+        $this->as($admin)->deleteJson("/api/students/{$id}")->assertOk();
+        $this->assertDatabaseMissing('student', ['student_id' => $id]);
+        $this->assertDatabaseHas('audit_log', ['entity' => 'student', 'action' => 'DELETE', 'entity_id' => $id]);
+
+        // Once sessions exist the record is the evidence behind every metric: suspend, never delete.
+        $this->logSession($this->token('t1@x.sa'), $this->s1->student_id, '2026-02-01', 2, [1])->assertStatus(201);
+        $this->as($admin)->deleteJson("/api/students/{$this->s1->student_id}")->assertStatus(409);
     }
 
     /** FR3 — regenerating a code revokes the old one. */

@@ -46,7 +46,9 @@ class CircleController extends Controller
     public function show(Request $r, int $id)
     {
         $a = $this->actor($r);
-        $this->rbac->requireCircleAccess($a, $id);
+        // The circle as an administrative object (FR19) is the System Administrator's
+        // business; its contents are not. Circle staff reach it through their own scope.
+        if ($a['role'] !== 'SYS_ADMIN') $this->rbac->requireCircleAccess($a, $id);
         return response()->json(Circle::withCount(['students', 'staff'])->findOrFail($id));
     }
 
@@ -54,7 +56,7 @@ class CircleController extends Controller
     public function roster(Request $r, int $id)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN', 'TEACHER']);
         $this->rbac->requireCircleAccess($a, $id);
         $circle = Circle::findOrFail($id);
         return response()->json([
@@ -79,28 +81,64 @@ class CircleController extends Controller
     public function report(Request $r, int $id, ReportService $reports)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
         $this->rbac->requireCircleAccess($a, $id);
         return response()->json($reports->circleReport(Circle::findOrFail($id)));
+    }
+
+    /** The Supervisor's dashboard: the circle at a glance, plus who needs attention. */
+    public function dashboard(Request $r, int $id, ReportService $reports)
+    {
+        $a = $this->actor($r);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN', 'TEACHER']);
+        $this->rbac->requireCircleAccess($a, $id);
+        $teacherId = $a['role'] === 'TEACHER' ? (int) $a['id'] : null;
+        return response()->json($reports->dashboard(Circle::findOrFail($id), $teacherId));
     }
 
     public function reportPdf(Request $r, int $id, ReportService $reports)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
         $this->rbac->requireCircleAccess($a, $id);
-        $path = $reports->circlePdf(Circle::findOrFail($id), $r->query('locale', 'en'));
+        $locale = in_array($r->query('locale'), ['ar', 'en'], true) ? $r->query('locale') : 'ar';
+        $path = $reports->circlePdf(Circle::findOrFail($id), $locale);
+        $this->audit->log($a, 'VIEW', 'circle_report', $id, ['format' => 'pdf', 'locale' => $locale]);
         return response()->file($path, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="circle_'.$id.'.pdf"']);
     }
 
-    // FR19 — circle administrators
+    /**
+     * FR19 — remove a circle created by mistake. Refused while anything is enrolled in it:
+     * circle_id is RESTRICT from both student and staff_user (Table 4.1), so a populated
+     * circle cannot be dropped without taking its people with it.
+     */
+    public function destroy(Request $r, int $id)
+    {
+        $a = $this->actor($r);
+        $this->rbac->requireRole($a, ['SYS_ADMIN']);
+        $c = Circle::withCount(['students', 'staff'])->findOrFail($id);
+        abort_if($c->students_count > 0 || $c->staff_count > 0, 409, 'This circle still has a supervisor, teachers or students. Move or remove them first.');
+        $c->delete();
+        $this->audit->log($a, 'DELETE', 'circle', $id, ['name' => $c->name]);
+        return response()->json(['deleted' => true]);
+    }
+
+    // FR19 — circle supervisors: the only people the System Administrator deals with
     public function storeCircleAdmin(Request $r)
     {
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['SYS_ADMIN']);
-        $d = $r->validate(['name' => 'required|string|max:120', 'email' => 'required|email|max:160|unique:staff_user,email', 'password' => 'required|string|min:6', 'circle_id' => 'required|integer|exists:circle,circle_id', 'locale' => 'nullable|in:ar,en']);
-        $u = StaffUser::create(['name' => $d['name'], 'email' => strtolower($d['email']), 'password_hash' => Hash::make($d['password']),
-            'role_id' => Role::where('code', 'CIRCLE_ADMIN')->value('role_id'), 'circle_id' => $d['circle_id'], 'locale' => $d['locale'] ?? 'ar']);
+        $d = $r->validate(['name' => 'required|string|max:120', 'email' => 'required|email|max:160|unique:staff_user,email',
+            'password' => 'required|string|min:6', 'circle_id' => 'required|integer|exists:circle,circle_id',
+            // `locale` is NOT NULL with a default, so `sometimes` — not `nullable`, which
+            // would let an explicit null through to the column.
+            'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/', 'address' => 'nullable|string|max:200', 'locale' => 'sometimes|in:ar,en']);
+        // array_merge, not `+`: with the union operator the left operand wins, so the raw
+        // email would shadow the lower-cased one and sign-in would stop being case-insensitive.
+        $u = StaffUser::create(array_merge(collect($d)->except('password')->all(), [
+            'email' => strtolower($d['email']), 'password_hash' => Hash::make($d['password']),
+            'role_id' => Role::where('code', 'CIRCLE_ADMIN')->value('role_id'), 'locale' => $d['locale'] ?? 'ar',
+        ]));
         $this->audit->log($a, 'CREATE', 'staff_user', $u->user_id, ['role' => 'CIRCLE_ADMIN', 'circle_id' => $d['circle_id']]);
         return response()->json($u->load('role')->toPublic(), 201);
     }

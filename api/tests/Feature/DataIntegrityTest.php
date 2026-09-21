@@ -72,14 +72,16 @@ class DataIntegrityTest extends TestCase
      */
     public function test_a_non_teacher_cannot_be_assigned_to_a_student(): void
     {
-        $sys = $this->token('sys@x.sa');
+        // The roster belongs to the Circle Supervisor (Table 1.1), so it is that role that
+        // exercises this constraint — the System Administrator no longer reaches student rows.
+        $admin = $this->token('a1@x.sa');
 
-        // A Circle Administrator is staff, and in the right circle, but is not a teacher.
-        $this->as($sys)->patchJson("/api/students/{$this->s1->student_id}", [
+        // A Circle Supervisor is staff, and in the right circle, but is not a teacher.
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", [
             'teacher_ids' => [$this->admin1->user_id],
         ])->assertStatus(422);
 
-        $this->as($sys)->patchJson("/api/students/{$this->s1->student_id}", [
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", [
             'teacher_ids' => [$this->t1->user_id],
         ])->assertOk();
 
@@ -96,7 +98,7 @@ class DataIntegrityTest extends TestCase
     {
         $other = $this->staff('t3@x.sa', 'TEACHER', $this->c2->circle_id);
 
-        $this->as($this->token('sys@x.sa'))
+        $this->as($this->token('a1@x.sa'))
             ->patchJson("/api/students/{$this->s1->student_id}", ['teacher_ids' => [$other->user_id]])
             ->assertStatus(422);
     }
@@ -214,6 +216,42 @@ class DataIntegrityTest extends TestCase
             $this->assertStringNotContainsString('UPDATE', $line);
             $this->assertStringNotContainsString('DELETE', $line);
         }
+    }
+
+    /**
+     * A NOT NULL column must be refused at validation, not at the database.
+     *
+     * `current_juz` and `locale` carry a default and are NOT NULL, so a request sending an
+     * explicit null used to pass a `nullable` rule and fail in the driver — a 500 on a
+     * request the API should simply have rejected. They take `sometimes` now: an absent key
+     * leaves the stored value alone, and an explicit null is a 422.
+     */
+    public function test_an_explicit_null_on_a_not_null_column_is_a_422_not_a_500(): void
+    {
+        $admin = $this->token('a1@x.sa');
+
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", ['current_juz' => null])->assertStatus(422);
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", ['locale' => null])->assertStatus(422);
+        $this->as($admin)->patchJson("/api/staff/{$this->t1->user_id}", ['locale' => null])->assertStatus(422);
+
+        // The stored values are untouched, and omitting the keys entirely still works.
+        $this->assertSame(1, $this->s1->fresh()->current_juz);
+        $this->assertSame('ar', $this->s1->fresh()->locale);
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", ['name' => 'Renamed'])->assertOk();
+        $this->assertSame(1, $this->s1->fresh()->current_juz);
+    }
+
+    /** The nullable columns really do accept null — the rule above must not over-tighten. */
+    public function test_the_optional_profile_fields_accept_null(): void
+    {
+        $admin = $this->token('a1@x.sa');
+        $this->as($admin)->patchJson("/api/students/{$this->s1->student_id}", [
+            'guardian_phone' => null, 'address' => null, 'age' => null,
+        ])->assertOk();
+        $this->as($admin)->patchJson("/api/staff/{$this->t1->user_id}", ['phone' => null, 'address' => null])->assertOk();
+
+        $this->assertNull($this->s1->fresh()->guardian_phone);
+        $this->assertNull($this->t1->fresh()->phone);
     }
 
     /** Rule 6 — the ML port is never published outside the host; only nginx publishes ports. */

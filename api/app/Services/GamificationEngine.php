@@ -31,13 +31,48 @@ class GamificationEngine
     {
         $perPage = (int) SystemSetting::num('xp_per_page', 10);
         $perSession = (int) SystemSetting::num('xp_per_session', 5);
-        $this->award($student, $session->session_id, (int) round($session->pages_memorized * $perPage), 'PAGE_MEMORIZED');
+        $this->award($student, $session->session_id, (int) round((float) $session->pages_memorized * $perPage), 'PAGE_MEMORIZED');
         if (in_array($session->attendance_status, ['P', 'L'], true)) {
             $this->award($student, $session->session_id, $perSession, 'SESSION_ATTENDED');
         }
         $completed = $this->progressChallenges($student, $session);
         $badges = $this->evaluateBadges($student, $metrics);
         return ['xp_total' => $this->totalXp($student->student_id), 'new_badges' => $badges, 'completed_challenges' => $completed];
+    }
+
+    /** The XP a session is worth as it currently stands (FR13 constants, both provisional). */
+    private function expectedXpFor(RecitationSession $session): int
+    {
+        $xp = (int) round((float) $session->pages_memorized * (int) SystemSetting::num('xp_per_page', 10));
+        if (in_array($session->attendance_status, ['P', 'L'], true)) {
+            $xp += (int) SystemSetting::num('xp_per_session', 5);
+        }
+
+        return $xp;
+    }
+
+    /**
+     * Brings a session's XP back in line after the teacher corrected or removed it.
+     *
+     * xp_ledger is append-only (Table 4.1): the rows already written are never touched, so
+     * the difference is posted as one ADJUST entry. The total stays SUM(points) and the
+     * ledger still reads as a complete history — including the correction itself, which is
+     * exactly what FR18 exists to preserve.
+     */
+    public function settleXpForSession(Student $student, ?RecitationSession $session, ?int $sessionId = null): int
+    {
+        $sessionId ??= $session?->session_id;
+        if ($sessionId === null) return 0;
+        $recorded = (int) XpLedger::where('session_id', $sessionId)
+            ->whereIn('reason', ['PAGE_MEMORIZED', 'SESSION_ATTENDED', 'ADJUST'])->sum('points');
+        $expected = $session ? $this->expectedXpFor($session) : 0;
+        $delta = $expected - $recorded;
+        if ($delta !== 0) {
+            XpLedger::create(['student_id' => $student->student_id, 'session_id' => $session?->session_id,
+                'points' => $delta, 'reason' => 'ADJUST', 'created_at' => now()]);
+        }
+
+        return $delta;
     }
 
     /** FR12 — automatic badge evaluation. Composite PK prevents earning twice. */

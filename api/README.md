@@ -76,6 +76,8 @@ with the `ml` container stopped — which is itself the I4 exit test.
 | `tests/Feature/ReportingTest.php` | FR14 term reports, FR15 PDF export, and that only this service writes files |
 | `tests/Feature/PredictionTest.php` | FR10 across the internal HTTP boundary, §2.9 append-only rows, the UC13 fallback |
 | `tests/Feature/AdministrationTest.php` | FR19, FR20, FR3, and the UC19–UC23 student reads |
+| `tests/Feature/AttendanceAndCorrectionTest.php` | FR4 as a register of its own, the P/A/E vocabulary, the Surah-bounded ayah check, and correcting or removing a session with the XP settled by an append-only ADJUST entry |
+| `tests/Feature/ArabicPdfTest.php` | FR15 / NFR6 — that the Arabic report is shaped and embeds a composite Arabic font, that the Surah is named rather than numbered, and that the guardian's link serves the report under the §2.13 controls |
 | `tests/Unit/MasteryCalculationTest.php` | §3.3 worked examples — 87.8 / 75.0 / 93.0 |
 
 ## Notes

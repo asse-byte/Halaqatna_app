@@ -14,6 +14,14 @@ use Illuminate\Support\Facades\Route;
 Route::get('/p/{token}', [ShareController::class, 'card'])->where('token', '[A-Za-z0-9_-]{43}');
 
 /*
+ * FR15 / UC26 — the full student report as a PDF, behind the same token. This is the
+ * artifact the teacher shares with a parent over WhatsApp: the message carries the link,
+ * the parent taps it, the report opens on their phone. Same expiry, same revocation and
+ * the same audit row as the card above; the parent still has no account (Table 1.1).
+ */
+Route::get('/p/{token}/report.pdf', [ShareController::class, 'reportPdf'])->where('token', '[A-Za-z0-9_-]{43}');
+
+/*
  * In production nginx serves the React SPA at `/` and proxies only `/api/` and `/p/` to this
  * container, so this route is never reached from outside. It answers locally, where Laravel is
  * hit directly, with a service identifier rather than a landing page — the user interfaces are

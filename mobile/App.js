@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as SecureStore from "expo-secure-store";
 import LoginScreen from "./src/screens/LoginScreen";
 import StudentsScreen from "./src/screens/StudentsScreen";
+import AttendanceScreen from "./src/screens/AttendanceScreen";
 import LogSessionScreen from "./src/screens/LogSessionScreen";
 import PerformanceScreen from "./src/screens/PerformanceScreen";
 import { setToken } from "./src/api";
@@ -32,6 +33,8 @@ export default function App() {
           ) : (
             <>
               <Stack.Screen name="Students">{(p) => <StudentsScreen {...p} onLogout={() => setAuthed(false)} />}</Stack.Screen>
+              {/* FR4 — the register, on its own screen rather than inside the recitation form. */}
+              <Stack.Screen name="Attendance" component={AttendanceScreen} />
               <Stack.Screen name="LogSession" component={LogSessionScreen} />
               <Stack.Screen name="Performance" component={PerformanceScreen} />
             </>

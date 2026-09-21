@@ -266,3 +266,76 @@ quoting the value and warning about it in all three env templates.
 **The lesson for the report:** silent truncation of a secret is worse than a crash. A credential
 that is weaker than it looks gives false assurance, and NFR3 ("bcrypt hashes; signed JWTs") is
 satisfied on paper while the actual protection is five characters.
+
+---
+
+## 9. Second review round — role boundary, plain language, Arabic PDF
+
+A walkthrough of the working system produced a second set of changes. The full Arabic
+analysis, mapping each one to the requirement it touches, is in
+`docs/مطابقة-التعديلات-للتقرير.md`; this section is the English summary for the report.
+
+### 9.1 Three places where the code was wider than the report
+
+| # | What the code did | What the report says | Fix |
+|---|---|---|---|
+| 1 | A System Administrator could read every circle's roster, every student's metrics and every circle report (`scopeCircleId` returned `null` for the role). | Table 1.1 gives that role circles, circle administrators, system settings and the audit trail. FR19 says the same. Rosters, students and performance data are FR20 and FR14 — the Circle Administrator's. | `requireCircleAccess` now refuses `SYS_ADMIN` outright, and `requireDeploymentAdmin` carries FR19. The two remits are disjoint rather than nested. Pinned by `RbacTest::test_sys_admin_manages_circles_and_supervisors_but_never_circle_data`. |
+| 2 | `StudentController::store` accepted `TEACHER`. | FR20 gives student creation to the Circle Administrator. Table 1.1's teacher row does not mention it. | Restricted to `CIRCLE_ADMIN`. A teacher who also supervises the circle signs in with that role; the grant follows the role, not the person. |
+| 3 | The Arabic PDF was produced by DomPDF, which performs no Arabic shaping and no bidi reordering — every Arabic report came out as isolated letters running left to right. | NFR6: every string exists in both languages and no untranslated string reaches production. FR14, FR15. | Replaced with mPDF, which joins the letters, applies the bidi algorithm and embeds XB Riyaz. `ArabicPdfTest` asserts the embedded composite font rather than a `%PDF-` header — the old header check passed on the broken output, which is how the defect survived. |
+
+### 9.2 Additive schema changes (Figure 4.7)
+
+| Column | Why | Report impact |
+|---|---|---|
+| `staff_user.phone`, `staff_user.address` | FR20: the Circle Administrator records a teacher's full contact details at registration. | Add to Figure 4.7; note under FR20. Both describe the staff user only — 3NF unaffected. |
+| `student.guardian_phone`, `student.address`, `student.age` | `guardian_phone` is what makes FR15 deliverable: the teacher hands the exported report to the parent over WhatsApp. The parent still has no account and stays outside the boundary of Figure 1.1. | Add to Figure 4.7; note `guardian_phone` under FR15. |
+| `student.access_code_issued_at` | Supports "one memorable code per month" (FR3). The code stays single-purpose and revocable (NFR3); this only records when it was last rotated so the UI can show a validity date instead of inviting a fresh code at every visit. | Note under FR3. |
+
+### 9.3 Vocabulary changes — presentation only
+
+FR7–FR9 still compute Mastery, momentum, precision, consistency and review depth with the
+formulas of Table 3.4, and those names are unchanged in the API, the schema and this report.
+What changed is the label a user reads and the one-line explanation under it (`ReportWords`
+for the PDFs, the locale files for the clients). FR11's four independent rankings are intact.
+
+Removed from user-facing screens, not from the system: the weighted error load `E(s)`,
+`d_max`, `α`, the per-error-type weights, the prediction `model_version`, and raw enum codes
+such as `PAGES_TOTAL`. Each session row now shows the count of notes and an accuracy
+percentage, both derived from the same formulas.
+
+**English was not removed.** FR17, O6 and NFR6 require both languages. What was fixed is
+English leaking into the Arabic interface.
+
+### 9.4 Attendance, session type and the recitation range
+
+| Change | Report position | Status |
+|---|---|---|
+| Attendance taken on its own screen for the whole circle (`GET`/`POST /api/attendance`) | FR4 requires an attendance status per student per session; it does not say where. Separating it serves NFR5 — recording an absence no longer means opening a full recitation form. | Compliant |
+| "Late" removed from the register | Table 4.1 lists `attendance_status in (P, A, L, E)`. **The column is unchanged and still accepts all four**, so legacy rows display correctly; only the UI stopped offering it. Every teacher interviewed treated a late arrival as present, and no formula in the report distinguished them (`consistency` counts P and L alike). | Implementation decision; note against Table 4.1 |
+| `MIXED` removed from `session_type` | `session_type` is not in the CPIT-498 report at all — it is the I2 decision recorded in §1 item 1 above. | Moves the code back toward the report |
+| Surah chosen by name | §4.7 requires the range in four numeric columns for 1NF. **Storage is unchanged**; only the input control did. The server now also bounds the ayah by the Surah actually chosen, which tightens validation rather than relaxing it. | Compliant |
+
+### 9.5 Additions that need a line in the report
+
+1. **Teacher self-service** (`/api/me/profile`, `/api/me/password`) — no FR covers it.
+   Proposed as **FR22** under M1. The edit lands on the same `staff_user` row the Circle
+   Administrator reads, so there is no second copy of a teacher's profile, and every change
+   writes an audit row (FR18). Role, circle and `is_active` stay with FR19/FR20.
+2. **The guardian's PDF behind the share token** (`GET /p/{token}/report.pdf`) — §2.13 limits
+   the public card to minimum data. The full report is what FR15 already authorises the
+   teacher to hand a parent; the link is the delivery. All §2.13 controls are kept: expiry,
+   revocation, flat 404 for unknown or retired tokens, and an audit row per download.
+3. **Access code length: 8 → 6** (three letters, three digits). NFR3's requirements —
+   single-purpose, revocable — both hold, and the report states no length. The trade must be
+   stated explicitly: ~9.3 million combinations, held by the NFR3a throttles (five failures
+   then a fifteen-minute lockout; 100 attempts per hour per IP), granting nothing but one
+   student's own read-only dashboard (FR16). The eight-character codes were being regenerated
+   at almost every sign-in because nobody could retain them, which defeated FR2 in practice.
+4. **The progress trend chart.** No new coefficient was introduced, deliberately: the bars are
+   weekly pages (FR8's raw input) and the line is the §3.3 Mastery formula evaluated at the
+   end of each week. A new weighting would have needed its own row in Table 3.4 and its own
+   justification. The verbal direction compares the last four weeks with the previous four and
+   reports "steady" unless the change exceeds three points of level or a quarter page a week.
+5. **XP correction entries.** Editing or deleting a session posts a compensating `ADJUST` row
+   rather than rewriting `xp_ledger`, which Table 4.1 makes insert-only. Deletion previously
+   left the points behind, because `xp_ledger.session_id` is `SET NULL` on delete.

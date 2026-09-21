@@ -65,12 +65,69 @@ class RbacTest extends TestCase
         $this->as($tok)->getJson("/api/students/{$this->s3->student_id}/metrics")->assertStatus(403);
     }
 
-    public function test_sys_admin_sees_every_circle(): void
+    /**
+     * Table 1.1 — the System Administrator administers the deployment and deals with the
+     * Circle Supervisors. Circles, supervisors, settings and the audit trail are theirs;
+     * rosters, students, sessions and performance data are the Supervisor's, and the two
+     * remits do not nest. This test pins both halves of that boundary.
+     */
+    public function test_sys_admin_manages_circles_and_supervisors_but_never_circle_data(): void
     {
         $tok = $this->token('sys@x.sa');
-        $this->as($tok)->getJson("/api/circles/{$this->c2->circle_id}/roster")->assertOk();
+
+        // Circles as administrative objects: visible, and every circle of them.
         $this->as($tok)->getJson('/api/circles')->assertOk()->assertJsonCount(2);
-        $this->as($tok)->getJson('/api/students')->assertOk()->assertJsonCount(3);
+        $this->as($tok)->getJson("/api/circles/{$this->c2->circle_id}")->assertOk();
+
+        // Their people are the Circle Supervisors, and only those.
+        $emails = collect($this->as($tok)->getJson('/api/staff')->assertOk()->json())->pluck('email');
+        $this->assertContains('a1@x.sa', $emails);
+        $this->assertContains('a2@x.sa', $emails);
+        $this->assertNotContains('t1@x.sa', $emails);
+
+        // Everything inside a circle is refused.
+        $this->as($tok)->getJson("/api/circles/{$this->c1->circle_id}/roster")->assertStatus(403);
+        $this->as($tok)->getJson("/api/circles/{$this->c1->circle_id}/report")->assertStatus(403);
+        $this->as($tok)->getJson("/api/circles/{$this->c1->circle_id}/leaderboard")->assertStatus(403);
+        $this->as($tok)->getJson('/api/students')->assertStatus(403);
+        $this->as($tok)->getJson("/api/students/{$this->s1->student_id}/metrics")->assertStatus(403);
+        $this->as($tok)->getJson("/api/students/{$this->s1->student_id}/sessions")->assertStatus(403);
+        $this->as($tok)->getJson("/api/students/{$this->s1->student_id}/report.pdf")->assertStatus(403);
+        $this->as($tok)->postJson("/api/students/{$this->s1->student_id}/access-code")->assertStatus(403);
+        $this->as($tok)->postJson('/api/teachers', ['name' => 'T', 'email' => 'tx@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
+        $this->as($tok)->postJson('/api/students', ['name' => 'N', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
+    }
+
+    /**
+     * FR20 — enrolling a student is the Supervisor's act, not the teacher's. A teacher who
+     * also supervises the circle signs in with that role and is not blocked by this.
+     */
+    public function test_a_teacher_cannot_enrol_a_student(): void
+    {
+        $this->as($this->token('t1@x.sa'))
+            ->postJson('/api/students', ['name' => 'New', 'circle_id' => $this->c1->circle_id])
+            ->assertStatus(403);
+        $this->as($this->token('a1@x.sa'))
+            ->postJson('/api/students', ['name' => 'New', 'circle_id' => $this->c1->circle_id])
+            ->assertStatus(201);
+    }
+
+    /** Staff self-service (audited) — a teacher edits their own profile but not their role or circle. */
+    public function test_a_teacher_edits_their_own_profile_and_password(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->as($t)->patchJson('/api/me/profile', ['name' => 'Ahmad', 'phone' => '+966500000000'])->assertOk();
+        $this->assertSame('Ahmad', $this->t1->fresh()->name);
+        $this->assertDatabaseHas('audit_log', ['entity' => 'staff_user', 'action' => 'UPDATE', 'actor_user_id' => $this->t1->user_id]);
+
+        // The Supervisor's roster reads the same row, so the edit is visible there at once.
+        $roster = $this->as($this->token('a1@x.sa'))->getJson("/api/circles/{$this->c1->circle_id}/roster")->json('teachers');
+        $this->assertContains('Ahmad', collect($roster)->pluck('name')->all());
+
+        $this->as($t)->postJson('/api/me/password', ['current_password' => 'wrong', 'new_password' => 'NewPass2026', 'new_password_confirmation' => 'NewPass2026'])->assertStatus(422);
+        $this->as($t)->postJson('/api/me/password', ['current_password' => self::PASSWORD, 'new_password' => 'NewPass2026', 'new_password_confirmation' => 'NewPass2026'])->assertOk();
+        $this->flushRateLimiters();
+        $this->asGuest()->postJson('/api/auth/login', ['email' => 't1@x.sa', 'password' => 'NewPass2026'])->assertOk();
     }
 
     public function test_circle_admin_lists_only_own_circle(): void

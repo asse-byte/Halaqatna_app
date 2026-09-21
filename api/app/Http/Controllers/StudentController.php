@@ -22,56 +22,109 @@ class StudentController extends Controller
         return $s;
     }
 
-    /** Staff list: teachers see their assigned students; admins see their circle; sys admin sees all. */
+    /**
+     * Staff list: a Teacher sees only the students assigned to them, a Circle Supervisor
+     * sees the whole circle. A System Administrator reaches neither (Table 1.1).
+     */
     public function index(Request $r)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN', 'TEACHER']);
         if ($a['role'] === 'TEACHER') {
             return response()->json($a['model']->students()->with('circle:circle_id,name')->orderBy('name')->get());
         }
-        $q = Student::with('circle:circle_id,name', 'teachers:user_id,name');
-        if ($scope = $this->rbac->scopeCircleId($a)) $q->where('circle_id', $scope);
-        return response()->json($q->orderBy('name')->get());
+        return response()->json(Student::with('circle:circle_id,name', 'teachers:user_id,name')
+            ->where('circle_id', $a['circle_id'])->orderBy('name')->get());
     }
 
     public function show(Request $r, int $id)
     {
-        return response()->json($this->studentFor($r, $id)->load('circle', 'teachers:user_id,name'));
+        $s = $this->studentFor($r, $id);
+
+        // rotation_due_at is derived, not stored: it is what the screen shows instead of
+        // inviting a fresh access code on every visit (FR3).
+        return response()->json($s->load('circle', 'teachers:user_id,name')->toArray()
+            + ['rotation_due_at' => $s->codeRotationDue()]);
     }
 
-    // FR20 — create student in circle (Circle Admin, Teacher for own circle)
+    /**
+     * Full profile captured at registration, shared by store() and update().
+     *
+     * `nullable` is reserved for the columns that really are nullable. `current_juz` and
+     * `locale` are NOT NULL with a default, so they take `sometimes`: an absent key is
+     * skipped and the default stands, while an explicit null is rejected with a 422 rather
+     * than reaching the database and failing there as a 500.
+     */
+    private const PROFILE_RULES = [
+        'guardian_phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
+        'address' => 'nullable|string|max:200',
+        'age' => 'nullable|integer|min:3|max:99',
+        'current_juz' => 'sometimes|integer|min:1|max:30',
+        'locale' => 'sometimes|in:ar,en',
+    ];
+
+    /**
+     * FR20 — the Circle Supervisor enrols a student. A Teacher cannot: Table 1.1 puts the
+     * student roster with the Supervisor, and a teacher who is also the circle's supervisor
+     * simply signs in with that role and still can.
+     */
     public function store(Request $r)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
-        $d = $r->validate(['name' => 'required|string|max:120', 'circle_id' => 'required|integer|exists:circle,circle_id', 'current_juz' => 'nullable|integer|min:1|max:30',
-            'locale' => 'nullable|in:ar,en', 'teacher_ids' => 'nullable|array', 'teacher_ids.*' => 'integer|exists:staff_user,user_id']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
+        $d = $r->validate(self::PROFILE_RULES + ['name' => 'required|string|max:120', 'circle_id' => 'required|integer|exists:circle,circle_id',
+            'teacher_ids' => 'nullable|array', 'teacher_ids.*' => 'integer|exists:staff_user,user_id']);
         $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
-        $s = Student::create(['name' => $d['name'], 'circle_id' => $d['circle_id'], 'current_juz' => $d['current_juz'] ?? 1, 'locale' => $d['locale'] ?? 'ar', 'access_code' => $this->rbac->generateAccessCode()]);
-        $teacherIds = $d['teacher_ids'] ?? ($a['role'] === 'TEACHER' ? [$a['id']] : []);
+        // array_merge, not `+`: the union operator keeps the LEFT value, so a field sent as
+        // null would shadow the default written here rather than being replaced by it.
+        $s = Student::create(array_merge(collect($d)->except('teacher_ids')->all(), [
+            'current_juz' => $d['current_juz'] ?? 1, 'locale' => $d['locale'] ?? 'ar',
+            'access_code' => $this->rbac->generateAccessCode(), 'access_code_issued_at' => now(),
+        ]));
+        $teacherIds = $d['teacher_ids'] ?? [];
         $this->assignTeachers($s, $teacherIds);
         $this->audit->log($a, 'CREATE', 'student', $s->student_id, ['circle_id' => $s->circle_id, 'teacher_ids' => $teacherIds]);
         return response()->json($s->load('teachers:user_id,name'), 201);
     }
 
-    // FR20 — suspend / reassign
+    // FR20 — edit the profile, suspend, reassign
     public function update(Request $r, int $id)
     {
         $a = $this->actor($r);
         $s = Student::findOrFail($id);
         $this->rbac->requireStudentManagement($a, $s);
-        $d = $r->validate(['name' => 'sometimes|string|max:120', 'is_active' => 'sometimes|boolean', 'current_juz' => 'sometimes|integer|min:1|max:30', 'locale' => 'sometimes|in:ar,en',
+        $d = $r->validate(self::PROFILE_RULES + ['name' => 'sometimes|string|max:120', 'is_active' => 'sometimes|boolean',
             'circle_id' => 'sometimes|integer|exists:circle,circle_id', 'teacher_ids' => 'sometimes|array', 'teacher_ids.*' => 'integer|exists:staff_user,user_id']);
-        if (isset($d['circle_id']) || isset($d['is_active'])) $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
+        if (isset($d['circle_id']) || isset($d['is_active'])) $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
         if (isset($d['circle_id'])) $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
         if (array_key_exists('teacher_ids', $d)) {
-            $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
+            $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
             $this->assignTeachers($s, $d['teacher_ids'], true);
         }
         $s->update(collect($d)->except('teacher_ids')->all());
         $this->audit->log($a, 'UPDATE', 'student', $s->student_id, collect($d)->all());
         return response()->json($s->load('teachers:user_id,name'));
+    }
+
+    /**
+     * FR20 — remove a student enrolled by mistake. Only the Circle Supervisor, and only
+     * while the record carries nothing worth keeping: once sessions exist the record is
+     * evidence behind every metric and forecast, so it is suspended instead of deleted.
+     * The audit row survives the delete (FR18) because audit_log holds no foreign key to
+     * student and is append-only.
+     */
+    public function destroy(Request $r, int $id)
+    {
+        $a = $this->actor($r);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
+        $s = Student::findOrFail($id);
+        $this->rbac->requireStudentManagement($a, $s);
+        abort_if($s->sessions()->exists(), 409, 'This student has recorded sessions. Suspend the student instead of deleting the record.');
+        $name = $s->name;
+        $s->teachers()->detach();
+        $s->delete();
+        $this->audit->log($a, 'DELETE', 'student', $id, ['name' => $name, 'circle_id' => $s->circle_id]);
+        return response()->json(['deleted' => true]);
     }
 
     private function assignTeachers(Student $s, array $ids, bool $sync = false): void
@@ -101,11 +154,22 @@ class StudentController extends Controller
         return response()->json(['prediction' => $p, 'stale' => $fresh === null, 'generated_at' => $p->generated_at, 'ml_available' => $fresh !== null]);
     }
 
+    /**
+     * Session history. Alongside the stored columns each row carries the two plain numbers
+     * the history table shows — how many mistakes were counted, and how accurate the
+     * recitation was as a percentage. The weighted load E(s) stays in the payload because
+     * the Analytics Engine and the report are built on it, but no screen prints it.
+     */
     public function sessions(Request $r, int $id, AnalyticsEngine $analytics)
     {
         $s = $this->studentFor($r, $id);
         $rows = $s->sessions()->with('errors.errorType', 'teacher:user_id,name')->orderByDesc('session_date')->get()
-            ->map(fn ($x) => $x->toArray() + ['error_load' => $analytics->errorLoad($x), 'error_density' => $analytics->errorDensity($x)]);
+            ->map(fn ($x) => $x->toArray() + [
+                'error_load' => $analytics->errorLoad($x),
+                'error_density' => $analytics->errorDensity($x),
+                'error_count' => $x->errors->count(),
+                'accuracy' => $analytics->sessionAccuracy($x),
+            ]);
         return response()->json($rows);
     }
 
@@ -158,9 +222,11 @@ class StudentController extends Controller
     public function reportPdf(Request $r, int $id, ReportService $reports)
     {
         $a = $this->actor($r);
-        $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
+        $this->rbac->requireRole($a, ['CIRCLE_ADMIN', 'TEACHER']);
         $s = $this->studentFor($r, $id);
-        $path = $reports->studentPdf($s, $r->query('locale', 'en'));
+        $locale = in_array($r->query('locale'), ['ar', 'en'], true) ? $r->query('locale') : 'ar';
+        $path = $reports->studentPdf($s, $locale);
+        $this->audit->log($a, 'VIEW', 'student_report', $s->student_id, ['format' => 'pdf', 'locale' => $locale]);
         return response()->file($path, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="student_'.$id.'.pdf"']);
     }
 
