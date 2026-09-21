@@ -16,10 +16,15 @@ use Illuminate\Support\Facades\Hash;
  */
 class StaffController extends Controller
 {
+    /**
+     * `phone` and `address` really are nullable columns, so they take `nullable`.
+     * `locale` is NOT NULL with a default, so it takes `sometimes`: an absent key leaves the
+     * stored value alone, and an explicit null is a 422 instead of a database error.
+     */
     private const PROFILE_RULES = [
         'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
         'address' => 'nullable|string|max:200',
-        'locale' => 'nullable|in:ar,en',
+        'locale' => 'sometimes|in:ar,en',
     ];
 
     public function index(Request $r)

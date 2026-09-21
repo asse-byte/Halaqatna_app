@@ -47,13 +47,20 @@ class StudentController extends Controller
             + ['rotation_due_at' => $s->codeRotationDue()]);
     }
 
-    /** Full profile captured at registration, shared by store() and update(). */
+    /**
+     * Full profile captured at registration, shared by store() and update().
+     *
+     * `nullable` is reserved for the columns that really are nullable. `current_juz` and
+     * `locale` are NOT NULL with a default, so they take `sometimes`: an absent key is
+     * skipped and the default stands, while an explicit null is rejected with a 422 rather
+     * than reaching the database and failing there as a 500.
+     */
     private const PROFILE_RULES = [
         'guardian_phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
         'address' => 'nullable|string|max:200',
         'age' => 'nullable|integer|min:3|max:99',
-        'current_juz' => 'nullable|integer|min:1|max:30',
-        'locale' => 'nullable|in:ar,en',
+        'current_juz' => 'sometimes|integer|min:1|max:30',
+        'locale' => 'sometimes|in:ar,en',
     ];
 
     /**

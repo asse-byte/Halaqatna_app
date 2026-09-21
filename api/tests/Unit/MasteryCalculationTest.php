@@ -23,9 +23,9 @@ class MasteryCalculationTest extends TestCase
         $this->engine = new AnalyticsEngine();
     }
 
-    private function mkSession(float $pages, array $codes, string $att = 'P', string $type = 'NEW'): RecitationSession
+    private function mkSession(float $pages, array $codes, string $att = 'P', string $type = 'NEW', ?string $date = null): RecitationSession
     {
-        $s = new RecitationSession(['pages_memorized' => $pages, 'attendance_status' => $att, 'session_type' => $type, 'session_date' => now()->toDateString()]);
+        $s = new RecitationSession(['pages_memorized' => $pages, 'attendance_status' => $att, 'session_type' => $type, 'session_date' => $date ?? now()->toDateString()]);
         $s->session_id = random_int(1, 1_000_000);
         $errors = collect($codes)->map(function ($code) {
             $e = new SessionError();
@@ -70,5 +70,68 @@ class MasteryCalculationTest extends TestCase
         // high-severity share = 0.85 / 1.10 → precision = 22.7
         $this->assertSame(22.7, $this->engine->precision($sessions));
         $this->assertSame(66.7, $this->engine->consistency($sessions));
+    }
+
+    // ---- the weekly progress curve (no new constant: pages + the §3.3 formula per week) ----
+
+    /**
+     * The level of each week is the §3.3 formula over everything recorded up to the end of
+     * that week, so it accumulates rather than being recomputed from that week alone. Here
+     * the first week is clean, the second adds a heavy error, and the level falls.
+     */
+    public function test_the_weekly_level_accumulates_and_falls_when_errors_appear(): void
+    {
+        $w1 = now()->startOfWeek()->subWeeks(2);
+        $w2 = now()->startOfWeek()->subWeek();
+        $sessions = collect([
+            $this->mkSession(2, [], 'P', 'NEW', $w1->toDateString()),
+            $this->mkSession(1, ['MEM_GAP', 'MEM_GAP'], 'P', 'NEW', $w2->toDateString()),
+        ]);
+
+        $trend = $this->engine->trend($sessions);
+
+        // Three weeks: the two with sessions, plus the current one, which is empty.
+        $this->assertCount(3, $trend);
+        $this->assertSame($w1->toDateString(), $trend[0]['week']);
+        $this->assertSame(2.0, $trend[0]['pages']);
+        $this->assertSame(100.0, $trend[0]['level']);          // no errors yet
+
+        $this->assertSame(1.0, $trend[1]['pages']);
+        $this->assertSame(2, $trend[1]['errors']);
+        // mean density over both sessions = (0 + 1.70) / 2 = 0.85 → 100 x (1 - 0.85/3)
+        $this->assertSame(71.7, $trend[1]['level']);
+
+        // The empty current week carries the level forward rather than dropping it to zero.
+        $this->assertSame(0.0, $trend[2]['pages']);
+        $this->assertSame(71.7, $trend[2]['level']);
+    }
+
+    public function test_the_direction_is_steady_until_the_change_is_real(): void
+    {
+        $flat = [];
+        for ($i = 0; $i < 8; $i++) $flat[] = ['week' => "w{$i}", 'pages' => 1.0, 'level' => 80.0, 'errors' => 0, 'sessions' => 1];
+        $this->assertSame('STEADY', $this->engine->trendDirection($flat)['direction']);
+
+        // A one-point wobble is not a decline — a child is not told they are slipping over noise.
+        $wobble = $flat;
+        for ($i = 4; $i < 8; $i++) $wobble[$i]['level'] = 78.0;
+        $this->assertSame('STEADY', $this->engine->trendDirection($wobble)['direction']);
+
+        $falling = $flat;
+        for ($i = 4; $i < 8; $i++) $falling[$i]['level'] = 60.0;
+        $this->assertSame('DOWN', $this->engine->trendDirection($falling)['direction']);
+
+        $rising = $flat;
+        for ($i = 4; $i < 8; $i++) $rising[$i]['level'] = 95.0;
+        $this->assertSame('UP', $this->engine->trendDirection($rising)['direction']);
+
+        // Fewer than two four-week blocks cannot show a direction.
+        $this->assertSame('NEW', $this->engine->trendDirection(array_slice($flat, 0, 3))['direction']);
+    }
+
+    public function test_an_empty_history_has_no_curve(): void
+    {
+        $this->assertSame([], $this->engine->trend(collect()));
+        $this->assertSame('NEW', $this->engine->trendDirection([])['direction']);
     }
 }

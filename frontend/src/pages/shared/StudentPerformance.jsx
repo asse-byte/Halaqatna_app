@@ -69,12 +69,15 @@ export default function StudentPerformance() {
     run: () => api.delete(`/sessions/${sid}`).then(() => { toast.success(t("deleted")); load(); }).catch((e) => toast.error(errMsg(e))),
   });
 
+  /**
+   * When the code is next due for rotation. The API computes it, but a code rotated during
+   * this visit comes back from the rotate endpoint only, so the issue date is the fallback.
+   */
   const rotationDue = useMemo(() => {
-    const due = student?.rotation_due_at || student?.access_code_issued_at;
     if (!student?.access_code_issued_at) return null;
     const d = new Date(student.rotation_due_at || student.access_code_issued_at);
     if (!student.rotation_due_at) d.setDate(d.getDate() + 30);
-    return { date: d.toISOString().slice(0, 10), overdue: d < new Date(), raw: due };
+    return { date: d.toISOString().slice(0, 10), overdue: d < new Date() };
   }, [student]);
 
   if (!student || !m) return <div className="text-muted-foreground">{t("loading")}</div>;

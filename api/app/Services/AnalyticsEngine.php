@@ -162,10 +162,22 @@ class AnalyticsEngine
     {
         if ($sessions->isEmpty()) return [];
         $ordered = $sessions->sortBy('session_date')->values();
+
+        // Each session's week is resolved once. Parsing the date inside the per-week loop
+        // instead made this O(weeks x sessions) Carbon parses, and the circle dashboard runs
+        // it for every student on the page.
+        $byWeek = [];
+        foreach ($ordered as $s) {
+            $byWeek[Carbon::parse($s->session_date)->startOfWeek()->toDateString()][] = $s;
+        }
+
         $weeks = [];
+        $upTo = collect();
         foreach ($this->weeklyPages($ordered) as $week => $pages) {
-            $upTo = $ordered->filter(fn ($s) => Carbon::parse($s->session_date)->startOfWeek()->toDateString() <= $week);
-            $inWeek = $ordered->filter(fn ($s) => Carbon::parse($s->session_date)->startOfWeek()->toDateString() === $week);
+            $inWeek = collect($byWeek[$week] ?? []);
+            // Sessions accumulate as the weeks advance, so the level at the end of each week
+            // is the §3.3 formula over everything recorded up to that point.
+            $upTo = $upTo->concat($inWeek);
             $weeks[] = [
                 'week' => $week,
                 'pages' => round((float) $pages, 2),

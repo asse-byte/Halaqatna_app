@@ -130,7 +130,9 @@ class CircleController extends Controller
         $this->rbac->requireRole($a, ['SYS_ADMIN']);
         $d = $r->validate(['name' => 'required|string|max:120', 'email' => 'required|email|max:160|unique:staff_user,email',
             'password' => 'required|string|min:6', 'circle_id' => 'required|integer|exists:circle,circle_id',
-            'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/', 'address' => 'nullable|string|max:200', 'locale' => 'nullable|in:ar,en']);
+            // `locale` is NOT NULL with a default, so `sometimes` — not `nullable`, which
+            // would let an explicit null through to the column.
+            'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/', 'address' => 'nullable|string|max:200', 'locale' => 'sometimes|in:ar,en']);
         // array_merge, not `+`: with the union operator the left operand wins, so the raw
         // email would shadow the lower-cased one and sign-in would stop being case-insensitive.
         $u = StaffUser::create(array_merge(collect($d)->except('password')->all(), [

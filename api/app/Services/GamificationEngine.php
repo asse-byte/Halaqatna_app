@@ -43,7 +43,7 @@ class GamificationEngine
     /** The XP a session is worth as it currently stands (FR13 constants, both provisional). */
     private function expectedXpFor(RecitationSession $session): int
     {
-        $xp = (int) round($session->pages_memorized * (int) SystemSetting::num('xp_per_page', 10));
+        $xp = (int) round((float) $session->pages_memorized * (int) SystemSetting::num('xp_per_page', 10));
         if (in_array($session->attendance_status, ['P', 'L'], true)) {
             $xp += (int) SystemSetting::num('xp_per_session', 5);
         }
