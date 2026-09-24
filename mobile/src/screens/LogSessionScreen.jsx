@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { api, errMsg } from "../api";
 import { useT } from "../i18n";
-import { queueSession } from "../offline";
+import { newClientId, queueSession } from "../offline";
+import { localToday } from "../dates";
 import { ayahCount, surahName, SURAH_NUMBERS } from "../surahs";
 
 /**
@@ -23,8 +24,9 @@ export default function LogSessionScreen({ route, navigation }) {
   const [types, setTypes] = useState([]);
   const [picker, setPicker] = useState(null); // "surah_from" | "surah_to" | null
   const [sameSurah, setSameSurah] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [f, setF] = useState({
-    student_id: route.params.studentId, session_date: new Date().toISOString().slice(0, 10),
+    student_id: route.params.studentId, session_date: localToday(),
     attendance_status: "P", session_type: "NEW",
     surah_from: 1, ayah_from: "1", surah_to: 1, ayah_to: "7", pages_memorized: "1", errors: [],
   });
@@ -47,17 +49,19 @@ export default function LogSessionScreen({ route, navigation }) {
   };
 
   const submit = async () => {
+    if (busy) return;   // a second tap while the first save is in flight would record it twice
+    setBusy(true);
     const body = {
       ...f,
       surah_to: sameSurah ? f.surah_from : f.surah_to,
       ayah_from: +f.ayah_from, ayah_to: +f.ayah_to, pages_memorized: +f.pages_memorized,
-      client_uuid: `${Date.now()}-${Math.random()}`,
+      client_uuid: newClientId(),
     };
     try { await api.post("/sessions", body); Alert.alert(t("saved"), t("session_saved")); navigation.goBack(); }
     catch (e) {
       if (!e.response) { await queueSession(body); Alert.alert(t("saved"), t("queued_offline")); navigation.goBack(); }
       else Alert.alert(t("error"), errMsg(e));
-    }
+    } finally { setBusy(false); }
   };
 
   const Seg = ({ options, value, onChange, label }) => (
@@ -129,7 +133,9 @@ export default function LogSessionScreen({ route, navigation }) {
         </View>
       </View>
 
-      <Pressable testID="session-log-submit-button" style={s.btn} onPress={submit}><Text style={s.btnTxt}>{t("save_session")}</Text></Pressable>
+      <Pressable testID="session-log-submit-button" style={[s.btn, busy && s.btnBusy]} onPress={submit} disabled={busy}>
+        <Text style={s.btnTxt}>{busy ? t("saving") : t("save_session")}</Text>
+      </Pressable>
 
       <Modal visible={!!picker} animationType="slide" onRequestClose={() => setPicker(null)}>
         <View style={s.modal}>
@@ -172,6 +178,7 @@ const s = StyleSheet.create({
   chip: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
   btn: { backgroundColor: "#0F382C", borderRadius: 12, padding: 16, alignItems: "center", marginTop: 20, minHeight: 44 },
   ghostBtn: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
+  btnBusy: { opacity: 0.6 },
   btnTxt: { color: "#fff", fontWeight: "700" },
   modal: { flex: 1, padding: 16, backgroundColor: "#FDFBF7" },
   option: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#E2E8F0", minHeight: 44, justifyContent: "center" },

@@ -9,7 +9,7 @@ import StudentsScreen from "./src/screens/StudentsScreen";
 import AttendanceScreen from "./src/screens/AttendanceScreen";
 import LogSessionScreen from "./src/screens/LogSessionScreen";
 import PerformanceScreen from "./src/screens/PerformanceScreen";
-import { setToken } from "./src/api";
+import { setToken, setUnauthorizedHandler } from "./src/api";
 import { LocaleProvider } from "./src/i18n";
 import { flushQueue, listenForReconnect } from "./src/offline";
 
@@ -20,7 +20,11 @@ export default function App() {
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
     I18nManager.allowRTL(true);
-    SecureStore.getItemAsync("token").then((t) => { if (t) { setToken(t); setAuthed(true); } setReady(true); });
+    // An expired or revoked session signs the teacher out instead of failing every request.
+    setUnauthorizedHandler(() => { SecureStore.deleteItemAsync("token"); setToken(null); setAuthed(false); });
+    SecureStore.getItemAsync("token")
+      .then((t) => { if (t) { setToken(t); setAuthed(true); flushQueue(); } })
+      .finally(() => setReady(true));
     return listenForReconnect(flushQueue);
   }, []);
   if (!ready) return null;

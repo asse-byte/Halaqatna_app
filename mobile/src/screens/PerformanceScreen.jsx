@@ -2,8 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, errMsg } from "../api";
 import { useT } from "../i18n";
-
-const BAND = (v) => (v == null ? "NO_DATA" : v >= 90 ? "EXCELLENT" : v >= 75 ? "STRONG" : v >= 50 ? "DEVELOPING" : "NEEDS_WORK");
+import { bandFor } from "../mastery";
 const TREND_TONE = { UP: "#0f7b6c", DOWN: "#9a4b2f", STEADY: "#475569", NEW: "#94A3B8" };
 
 /**
@@ -44,7 +43,7 @@ export default function PerformanceScreen({ route }) {
       <View style={s.hero} testID="mastery-score-card">
         <Text style={s.label}>{t("mastery")}</Text>
         <Text style={s.hval}>{m.mastery ?? "—"}<Text style={s.small}> / 100</Text></Text>
-        <Text style={s.band}>{t(`band_${BAND(m.mastery)}`)}</Text>
+        <Text style={s.band}>{t(`band_${bandFor(m.mastery)}`)}</Text>
         <Text style={s.hint}>{t("mastery_hint")}</Text>
         <Text style={[s.trend, { color: TREND_TONE[dir] }]} testID="trend-direction">{t("trend")}: {t(`trend_${dir}`)}</Text>
       </View>
