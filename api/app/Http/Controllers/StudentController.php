@@ -155,14 +155,26 @@ class StudentController extends Controller
         return response()->json($analytics->metrics($s) + ['xp_total' => $g->totalXp($s->student_id)]);
     }
 
-    // FR10 / UC13 — with staleness fallback
+    /**
+     * FR10 / UC13 — the stored forecast, or a fresh one with ?refresh=1.
+     *
+     * `stale` means the forecast may not reflect the latest sessions because the service
+     * could not be reached the last time it should have updated it — not that this request
+     * happened not to ask for a new one.
+     */
     public function prediction(Request $r, int $id, MlClient $ml, AnalyticsEngine $analytics)
     {
         $s = $this->studentFor($r, $id);
         $fresh = $r->boolean('refresh') ? $ml->forecast($s, $analytics->metrics($s)) : null;
         $p = $fresh ?? $ml->latest($s);
-        if (!$p) return response()->json(['prediction' => null, 'stale' => true, 'ml_available' => $fresh !== null]);
-        return response()->json(['prediction' => $p, 'stale' => $fresh === null, 'generated_at' => $p->generated_at, 'ml_available' => $fresh !== null]);
+        $mlAvailable = !$ml->isStale($s);
+
+        return response()->json([
+            'prediction' => $p,
+            'stale' => $p === null || !$mlAvailable,
+            'generated_at' => $p?->generated_at,
+            'ml_available' => $mlAvailable,
+        ]);
     }
 
     /**

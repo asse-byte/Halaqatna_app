@@ -105,6 +105,40 @@ class PredictionTest extends TestCase
         $this->assertSame(1, Prediction::where('student_id', $this->s1->student_id)->count());
     }
 
+    /**
+     * Reading the stored forecast is not a failure to update it. The first build answered
+     * every plain read with stale = true, so the "could not update the forecast" warning sat
+     * on every student's page while the service was running normally.
+     */
+    public function test_a_current_forecast_read_without_refresh_is_not_stale(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->fakeHttp(['*/forecast' => Http::response(self::ML_OK)]);
+        $this->logSession($t, $this->s1->student_id, '2026-03-01', 3)->assertStatus(201);
+
+        $body = $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->json();
+
+        $this->assertFalse($body['stale']);
+        $this->assertTrue($body['ml_available']);
+        $this->assertSame('linreg-20260401', $body['prediction']['model_version']);
+    }
+
+    /** UC13 — a session saved while the service is down leaves the stored forecast marked stale until it recovers. */
+    public function test_a_forecast_missed_while_the_service_was_down_stays_stale_until_it_recovers(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->fakeHttp(['*/forecast' => Http::response(self::ML_OK)]);
+        $this->logSession($t, $this->s1->student_id, '2026-03-01', 3)->assertStatus(201);
+
+        $this->fakeHttp(['*' => Http::response(['message' => 'down'], 503)]);
+        $this->logSession($t, $this->s1->student_id, '2026-03-02', 2)->assertStatus(201)->assertJsonPath('prediction_stale', true);
+        $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->assertJsonPath('stale', true);
+
+        $this->fakeHttp(['*/forecast' => Http::response(self::ML_OK)]);
+        $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction?refresh=1")->assertOk()->assertJsonPath('stale', false);
+        $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->assertJsonPath('stale', false);
+    }
+
     /** A student who has never had a forecast gets an explicit null, not an error. */
     public function test_no_prediction_yet_is_reported_as_null_and_stale(): void
     {

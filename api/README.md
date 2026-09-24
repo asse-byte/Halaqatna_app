@@ -50,7 +50,7 @@ never point `DB_USERNAME` at that account for serving traffic.
 ## Tests
 
 ```bash
-php artisan test                      # 140 feature + unit tests, 930 assertions
+php artisan test                      # 142 feature + unit tests, 946 assertions
 php artisan test --coverage --min=70  # NFR9: >= 70% line coverage per module
 ```
 
