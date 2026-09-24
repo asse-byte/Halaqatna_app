@@ -30,7 +30,12 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Then set `JWT_SECRET`, `DB_PASSWORD`, `SYS_ADMIN_EMAIL` and `SYS_ADMIN_PASSWORD` in `.env`.
+Then set `JWT_SECRET` (at least 32 characters), `DB_PASSWORD`, `SYS_ADMIN_EMAIL` and
+`SYS_ADMIN_PASSWORD` (at least 8 characters) in `.env`. Behind a reverse proxy, also set
+`TRUSTED_PROXIES` — see `config/halaqtna.php`.
+
+Every value the application reads from the environment is read in `config/halaqtna.php` and
+nowhere else, so `php artisan config:cache` is safe to use.
 
 Create the schema, apply the least-privilege grants and seed from the repository root:
 
@@ -45,11 +50,12 @@ never point `DB_USERNAME` at that account for serving traffic.
 ## Tests
 
 ```bash
-php artisan test                      # 95 feature + unit tests, 509 assertions
+php artisan test                      # 140 feature + unit tests, 930 assertions
 php artisan test --coverage --min=70  # NFR9: >= 70% line coverage per module
 ```
 
-**Measured: 92.78% lines (578/623)**, every module at or above 70% (pcov 1.0.12, PHP 8.3.33).
+**Last measured: 92.78% lines (578/623)**, every module at or above 70% (pcov 1.0.12, PHP 8.3.33),
+before the third review round. Re-run with a coverage driver to refresh it.
 
 `--coverage` needs a coverage driver, which PHP does not ship with — without one it reports
 nothing at all rather than failing loudly. Install **pcov** (fast, line coverage only, which is
@@ -78,6 +84,7 @@ with the `ml` container stopped — which is itself the I4 exit test.
 | `tests/Feature/AdministrationTest.php` | FR19, FR20, FR3, and the UC19–UC23 student reads |
 | `tests/Feature/AttendanceAndCorrectionTest.php` | FR4 as a register of its own, the P/A/E vocabulary, the Surah-bounded ayah check, and correcting or removing a session with the XP settled by an append-only ADJUST entry |
 | `tests/Feature/ArabicPdfTest.php` | FR15 / NFR6 — that the Arabic report is shaped and embeds a composite Arabic font, that the Surah is named rather than numbered, and that the guardian's link serves the report under the §2.13 controls |
+| `tests/Feature/HardeningTest.php` | the third review round: tokens revoked with their credential, the proxy-aware rate limiter, settings bounds, XP that does not depend on the order of register and recitation, dates, and errors that surface as 4xx instead of 500 |
 | `tests/Unit/MasteryCalculationTest.php` | §3.3 worked examples — 87.8 / 75.0 / 93.0 |
 
 ## Notes

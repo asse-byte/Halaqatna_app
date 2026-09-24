@@ -122,8 +122,9 @@ Not in the approved report; it strengthens NFR3, which is already there.
 - Student login is keyed on **IP only, never on the access code**. A code is eight characters and
   is the student's sole credential; keying the lockout on it would let anyone who knows a code —
   or who guesses codes in bulk — permanently deny that student access. Lock the source, not the victim.
-- Five failures, then a 15-minute lockout, on both endpoints. A secondary limit of 100 attempts per
-  hour per IP on student login blunts bulk guessing spread across many students.
+- Five failures, then a 15-minute lockout, on both endpoints. A secondary limit of 100 failed
+  attempts per hour per IP, also on both endpoints, blunts bulk guessing spread across many
+  students and password spraying across many staff accounts (the staff half was added in §10).
 - Both endpoints return an **identical message and status** whether or not the identifier exists.
   This is why a *suspended* account also returns the generic 401: a distinct 403 would confirm both
   that the email is real and that the password was correct.
@@ -339,3 +340,59 @@ English leaking into the Arabic interface.
 5. **XP correction entries.** Editing or deleting a session posts a compensating `ADJUST` row
    rather than rewriting `xp_ledger`, which Table 4.1 makes insert-only. Deletion previously
    left the points behind, because `xp_ledger.session_id` is `SET NULL` on delete.
+
+---
+
+## 10. Third review round — a full audit of the code
+
+A file-by-file review of the API, both clients, the ML service and the deployment files.
+Every backend defect below is pinned by a test in `api/tests/Feature/HardeningTest.php` (or
+`DataIntegrityTest`), and each of those tests was run against the code **before** the fix to
+confirm that it fails there. None of these changes alters a formula, a requirement or the
+schema; most of them are the code being brought back in line with what the report already says.
+
+### 10.1 Security (NFR3, NFR3a, FR21)
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | **Revoking a credential did not revoke its tokens.** Rotating a leaked access code, or changing a password, left every token already issued valid for its full 12 hours. NFR3 calls the code "revocable"; in practice it was not. | Each token carries a keyed fingerprint of the credential it was issued against (the password hash or the access code). A password change, a supervisor's reset or a code rotation signs out every device at once. The device that changed its own password receives a fresh token. |
+| 2 | **Behind nginx every request came from one address.** Laravel trusted no proxy, so it saw the nginx container as the client: five wrong codes from anyone locked **every** student out for fifteen minutes, and share links were built as `http://` — the parent's first request carried the token in clear text. | `TRUSTED_PROXIES` (set to `*` under Compose, where the API is unreachable except through nginx), and nginx now **overwrites** `X-Forwarded-For` rather than appending to it, so a client cannot choose its own IP. |
+| 3 | **No limit on password spraying.** Staff sign-in was throttled per email + IP only, so one address could try five passwords against every account in turn. | The same 100-per-hour-per-IP ceiling students already had now applies to staff sign-in too. §4 above should read "a secondary limit of 100 failed attempts per hour per IP on **both** endpoints". |
+| 4 | Sign-in response time revealed whether an email belonged to a staff member (no bcrypt round for an unknown email or a suspended account). | The hash is always checked, against a dummy hash when the email is unknown. |
+| 5 | A share link could be issued for any number of days (`days=36500`). | `days` is 1–30; §2.13's thirty days is now a ceiling, not only a default. |
+| 6 | The student's own report (and the guardian's PDF) serialised the full teacher records — email, phone, home address. | Teachers are listed by name only. |
+| 7 | `JWT_SECRET`, the ML address and the seeded admin were read with `env()` at run time, which returns `null` once `config:cache` is used. An empty or short secret surfaced as an opaque 500. | All read through `config/halaqtna.php`; a secret under 32 characters fails with a message saying so. |
+| 8 | Passwords set by an administrator could be 6 characters; self-service required 8. | One rule everywhere: 8–72 characters (bcrypt ignores anything past 72 bytes). |
+
+### 10.2 Deployment (rule 4, rule 6)
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | **Sign-in was dead on MySQL.** `scripts/db_grants.sql` granted `halaqtna_api` nothing on the `cache` and `cache_locks` tables that the rate limiter uses, so every login failed with *SELECT command denied* — the §8.1 defect again, on the least-privilege deployment this time. SQLite has no grants, which is why the suite never saw it. | Grants added, and a test now checks that **every** migrated table has a grant line. |
+| 2 | The `api` container ran `migrate` at start-up as `halaqtna_api`, which cannot create tables — so on a fresh stack the container exited, and the documented `DB_HOST=db bash scripts/db_setup.sh` could not reach the unpublished `db` service from the host at all. | The container only serves. `scripts/docker_setup.sh` migrates as `halaqtna_admin` in a one-off container, applies the grants through the `db` container's client, seeds and verifies the append-only guarantee. |
+| 3 | `scripts/db_setup.sh` ran `migrate:fresh` — run against a live database it would erase every student's history. | Plain `migrate` by default; `FRESH=1` to reset. |
+| 4 | No `.dockerignore`: a developer's `api/.env`, local SQLite file and `vendor/` were copied into the image. | `.dockerignore` for `api/` and `ml/`. |
+| 5 | nginx sent no security headers. | HSTS, `nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy on every response. |
+| 6 | Every PDF export — including every tap on a guardian's public link — wrote a new file that was never deleted. | One stored copy per report and language, overwritten; the response is served from memory. |
+
+### 10.3 Correctness (FR4, FR5, FR7–FR9, FR12, FR13)
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | **XP depended on the order of register and recitation.** The register awarded nothing for attending, a later correction of the same row did; and re-marking a student absent after a recitation left the page XP in place. | One routine brings a session's ledger in line with the session as it stands, from every path (register, recitation, correction). The first award keeps its own reason; later differences are one `ADJUST` entry — the append-only rule is unchanged. |
+| 2 | An absence could keep a passage, pages and notes (and the SPA's editor wrote "Al-Fatihah 1" onto rows that had none). | An absence carries none of them, whichever screen records it. |
+| 3 | Sessions could be dated in the future, creating weeks that have not happened in every weekly figure. | `session_date` must be today or earlier. |
+| 4 | "The last eight sessions" (Mastery, §3.3; consistency, §3.6) were chosen by insertion order, so a register typed in late for last month counted as the most recent. | Chosen by date. The §3.3 worked examples still return 87.8 / 75.0 / 93.0. |
+| 5 | A `d_max` of 0 saved in UC3 divided by zero in every Mastery figure; alpha and the XP rates were unbounded. | Each setting has a range; unknown keys are refused. |
+| 6 | The register awarded no attendance badges (FR12). | Badges are evaluated after the register is saved. |
+| 7 | Unique and foreign-key violations were recognised by MySQL's wording only, so on SQLite (the demo path) they were 500s; a 404 named the internal model class. | Driver-independent handling; a plain "Not found". |
+| 8 | A refusal from the forecast evaluation ("dataset too small", §9's honest answer) reached the screen as "Something went wrong". | The ML service's reason is passed through. |
+| 9 | The demo seed contained ayah ranges past the end of the Surah, which the API itself refuses. | Bounded by the Surah's length. |
+
+### 10.4 Clients
+
+- **Offline queue (UC10 5a), web and mobile.** A session was dropped on *any* server answer — so a teacher whose token had expired while offline lost every queued session to a 401 — and a session queued while a sync was running could be overwritten. Sessions now stay queued on 401/408/429/5xx, only one sync runs at a time, and the queue is re-read before it is written. On the phone, the queue also no longer syncs before the saved sign-in has been read back.
+- **Dates.** "Today" was the UTC date, which in Jeddah is still yesterday until 03:00. Both clients now use the local date.
+- **Renewing an access code asks first**, because it signs the student out everywhere.
+- **The System Administrator can reach My Account** (FR22) to change the seeded password.
+- **Clean-up.** 46 unused UI scaffolding components (with their hook, helper and generator config) and 52 unused packages were removed from the web client; two dependencies with published high-severity advisories were upgraded (`npm audit`: 0); ESLint is configured and clean; the locale check now also fails when a client uses a key that exists in neither language.
