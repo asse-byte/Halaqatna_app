@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { toast } from "sonner";
+import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { btnGhost, PageTitle, Table } from "../../components/ui-kit";
 
@@ -7,7 +8,7 @@ export default function Audit() {
   const { t } = useT();
   const [page, setPage] = useState(null);
   const [p, setP] = useState(1);
-  useEffect(() => { api.get("/audit", { params: { page: p } }).then((r) => setPage(r.data)); }, [p]);
+  useEffect(() => { api.get("/audit", { params: { page: p } }).then((r) => setPage(r.data)).catch((e) => toast.error(errMsg(e))); }, [p]);
   return (
     <div>
       <PageTitle title={t("audit_title")} subtitle={`${t("audit_subtitle")}${page ? ` — ${t("audit_rows", { n: page.total })}` : ""}`} />

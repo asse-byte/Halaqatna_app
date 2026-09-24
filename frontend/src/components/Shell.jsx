@@ -18,6 +18,7 @@ const NAV = {
     ["/admin/circle-admins", "nav_circle_admins", Shield],
     ["/admin/audit", "nav_audit", ClipboardList],
     ["/admin/settings", "nav_settings", Settings],
+    ["/admin/account", "nav_account", User],
   ],
   CIRCLE_ADMIN: [
     ["/circle", "nav_overview", LayoutDashboard],

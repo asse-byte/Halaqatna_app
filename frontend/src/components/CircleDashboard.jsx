@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertTriangle, TrendingUp } from "lucide-react";
 import { api, errMsg } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useT } from "../lib/i18n";
 import { MetricCard, PageTitle, Table, btnGhost } from "./ui-kit";
 
@@ -33,16 +34,12 @@ const TREND_TONE = {
  */
 export function CircleDashboard({ title, subtitle }) {
   const { t } = useT();
+  const { actor } = useAuth();
   const [data, setData] = useState(null);
-  const [circleId, setCircleId] = useState(null);
+  const circleId = actor.circle_id;
 
   useEffect(() => {
-    api.get("/circles")
-      .then((r) => { const c = r.data[0]; if (c) setCircleId(c.circle_id); else setData({ empty: true }); })
-      .catch((e) => toast.error(errMsg(e)));
-  }, []);
-  useEffect(() => {
-    if (!circleId) return;
+    if (!circleId) return setData({ empty: true });
     api.get(`/circles/${circleId}/dashboard`).then((r) => setData(r.data)).catch((e) => toast.error(errMsg(e)));
   }, [circleId]);
 
@@ -69,7 +66,7 @@ export function CircleDashboard({ title, subtitle }) {
           <div className="mt-3 flex flex-wrap gap-2">
             {data.improving.length === 0
               ? <span className="text-sm text-muted-foreground">{t("no_data")}</span>
-              : data.improving.map((n) => <span key={n} className="chip !min-h-0 border-emerald-400/50 text-emerald-700 dark:text-emerald-400">{n}</span>)}
+              : data.improving.map((n, i) => <span key={i} className="chip !min-h-0 border-emerald-400/50 text-emerald-700 dark:text-emerald-400">{n}</span>)}
           </div>
         </div>
 

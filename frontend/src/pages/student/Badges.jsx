@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Award, Lock } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
 import { PageTitle } from "../../components/ui-kit";
@@ -10,7 +11,11 @@ export default function Badges() {
   const { actor } = useAuth();
   const [d, setD] = useState(null);
   const [xp, setXp] = useState(null);
-  useEffect(() => { api.get(`/students/${actor.student_id}/badges`).then((r) => setD(r.data)); api.get(`/students/${actor.student_id}/xp`).then((r) => setXp(r.data)); }, []);
+  useEffect(() => {
+    const fail = (e) => toast.error(errMsg(e));
+    api.get(`/students/${actor.student_id}/badges`).then((r) => setD(r.data)).catch(fail);
+    api.get(`/students/${actor.student_id}/xp`).then((r) => setXp(r.data)).catch(fail);
+  }, [actor.student_id]);
   const earned = new Map((d?.earned || []).map((b) => [b.badge_id, b.pivot.earned_at]));
   return (
     <div>

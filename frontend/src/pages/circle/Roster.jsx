@@ -57,7 +57,11 @@ export default function Roster() {
 
   const patchStaff = (u, body) => api.patch(`/staff/${u.user_id}`, body).then(load).catch((e) => toast.error(errMsg(e)));
   const patchStudent = (s, body) => api.patch(`/students/${s.student_id}`, body).then(load).catch((e) => toast.error(errMsg(e)));
-  const rotateCode = (s) => api.post(`/students/${s.student_id}/access-code`).then(() => { toast.success(t("code_regenerated")); load(); }).catch((e) => toast.error(errMsg(e)));
+  /** A new code signs the student out everywhere, so it is never one stray tap away. */
+  const rotateCode = (s) => setConfirm({
+    title: t("regenerate_code"), message: `${t("confirm_rotate_code")}\n\n${s.name}`, confirmLabel: t("rotate_code"),
+    run: () => api.post(`/students/${s.student_id}/access-code`).then(() => { toast.success(t("code_regenerated")); load(); }).catch((e) => toast.error(errMsg(e))),
+  });
 
   const remove = (kind, row) => setConfirm({
     title: t("delete"),
@@ -155,7 +159,7 @@ export default function Roster() {
                 </div>
                 <div className="sm:col-span-2">
                   <Field label={t("password")} hint={form.user_id ? t("password_optional_hint") : undefined}>
-                    <input data-testid="form-password-input" className={inputCls} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required={!form.user_id} minLength={form.password ? 6 : undefined} />
+                    <input data-testid="form-password-input" className={inputCls} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required={!form.user_id} minLength={form.password ? 8 : undefined} />
                   </Field>
                 </div>
               </div>
@@ -199,7 +203,7 @@ export default function Roster() {
         )}
       </Modal>
 
-      <ConfirmDialog open={!!confirm} title={confirm?.title} message={confirm?.message}
+      <ConfirmDialog open={!!confirm} title={confirm?.title} message={confirm?.message} confirmLabel={confirm?.confirmLabel}
         onCancel={() => setConfirm(null)} onConfirm={() => { confirm.run(); setConfirm(null); }} />
     </div>
   );

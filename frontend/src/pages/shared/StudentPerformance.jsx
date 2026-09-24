@@ -7,12 +7,12 @@ import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
 import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, ErrorChip, Modal, PageTitle, Table, TrendChart } from "../../components/ui-kit";
 import { MetricPanel } from "../../components/MetricPanel";
-import { ForecastCard } from "../student/Dashboard";
+import { ForecastCard } from "../../components/ForecastCard";
 import { SessionEditor } from "../../components/SessionEditor";
+import { formatDate, toLocalDate } from "../../lib/dates";
+import { bandFor } from "../../lib/mastery";
 import { rangeLabel } from "../../lib/surahs";
 import { fillTemplate, openWhatsApp, toWhatsAppNumber } from "../../lib/whatsapp";
-
-const BAND = (v) => (v == null ? "NO_DATA" : v >= 90 ? "EXCELLENT" : v >= 75 ? "STRONG" : v >= 50 ? "DEVELOPING" : "NEEDS_WORK");
 
 export default function StudentPerformance() {
   const { id } = useParams();
@@ -37,8 +37,11 @@ export default function StudentPerformance() {
   useEffect(() => { load(); }, [id]);
 
   const issueShare = () => api.post(`/students/${id}/share-link`).then((r) => { setShare(r.data); return r.data; });
+  const createShare = () => issueShare().then(() => toast.success(t("share_created"))).catch((e) => toast.error(errMsg(e)));
   const revokeShare = () => api.delete(`/share-links/${share.link_id}`).then(() => { setShare(null); toast.success(t("share_revoked")); }).catch((e) => toast.error(errMsg(e)));
-  const copyShare = () => navigator.clipboard?.writeText(share?.report_url || "").then(() => toast.success(t("copied")));
+  const copyShare = () => navigator.clipboard?.writeText(share?.report_url || "")
+    .then(() => toast.success(t("copied")))
+    .catch(() => toast.error(t("error")));
 
   /**
    * FR15 delivered the way a parent actually receives things: one tap opens WhatsApp on the
@@ -53,16 +56,20 @@ export default function StudentPerformance() {
       if (!toWhatsAppNumber(phone)) { toast.error(t("share_no_phone")); return; }
       const message = fillTemplate(t("share_message"), {
         student: student.name, circle: student.circle?.name ?? "",
-        juz: student.current_juz, band: t(`band_${BAND(m.mastery)}`),
+        juz: student.current_juz, band: t(`band_${bandFor(m.mastery)}`),
         url: link.report_url,
       });
       openWhatsApp(phone, message);
     } catch (e) { toast.error(errMsg(e)); } finally { setSharing(false); }
   };
 
-  const rotateCode = () => api.post(`/students/${id}/access-code`)
-    .then((r) => { toast.success(t("code_regenerated")); setStudent({ ...student, ...r.data }); })
-    .catch((e) => toast.error(errMsg(e)));
+  /** A new code signs the student out everywhere, so it is never one stray tap away. */
+  const rotateCode = () => setConfirm({
+    title: t("regenerate_code"), message: t("confirm_rotate_code"), confirmLabel: t("rotate_code"),
+    run: () => api.post(`/students/${id}/access-code`)
+      .then((r) => { toast.success(t("code_regenerated")); setStudent((s) => ({ ...s, ...r.data })); })
+      .catch((e) => toast.error(errMsg(e))),
+  });
 
   const removeSession = (sid) => setConfirm({
     title: t("delete"), message: t("confirm_delete_session"),
@@ -77,7 +84,7 @@ export default function StudentPerformance() {
     if (!student?.access_code_issued_at) return null;
     const d = new Date(student.rotation_due_at || student.access_code_issued_at);
     if (!student.rotation_due_at) d.setDate(d.getDate() + 30);
-    return { date: d.toISOString().slice(0, 10), overdue: d < new Date() };
+    return { date: toLocalDate(d), overdue: d < new Date() };
   }, [student]);
 
   if (!student || !m) return <div className="text-muted-foreground">{t("loading")}</div>;
@@ -121,7 +128,7 @@ export default function StudentPerformance() {
       <MetricPanel m={m} compact />
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-        <ForecastCard pred={pred} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data))} />
+        <ForecastCard pred={pred} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
 
@@ -183,19 +190,19 @@ export default function StudentPerformance() {
               <button data-testid="share-copy-button" className={btnGhost} onClick={copyShare} title={t("copy_link")}><Copy size={14} /></button>
             </div>
             <div className="text-xs text-muted-foreground">
-              {t("expires")} <span dir="ltr">{String(share.expires_at).slice(0, 10)}</span>
+              {t("expires")} <span dir="ltr">{formatDate(share.expires_at)}</span>
               {share.view_count > 0 && <> · {t("views")}: {share.view_count}</>}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <a href={share.report_url} target="_blank" rel="noreferrer" data-testid="share-open-link" className={btnGhost}>{t("open_link")}</a>
               <button data-testid="share-revoke-button" className={`${btnGhost} text-destructive`} onClick={revokeShare}>{t("revoke_link")}</button>
-              <button data-testid="share-regenerate-button" className={btnGhost} onClick={() => issueShare().then(() => toast.success(t("share_created")))}>{t("new_link")}</button>
+              <button data-testid="share-regenerate-button" className={btnGhost} onClick={createShare}>{t("new_link")}</button>
               <button data-testid="share-whatsapp-modal" className={btnPrimary} onClick={sendWhatsApp} disabled={sharing}><Share2 size={14} />{t("share_whatsapp")}</button>
             </div>
           </div>
         ) : (
           <div className="flex justify-end gap-2">
-            <button data-testid="share-create-button" className={btnGhost} onClick={() => issueShare().then(() => toast.success(t("share_created")))}>{t("create_link")}</button>
+            <button data-testid="share-create-button" className={btnGhost} onClick={createShare}>{t("create_link")}</button>
             <button data-testid="share-whatsapp-empty" className={btnPrimary} onClick={sendWhatsApp} disabled={sharing}><Share2 size={14} />{t("share_whatsapp")}</button>
           </div>
         )}
@@ -205,6 +212,7 @@ export default function StudentPerformance() {
         open={!!confirm}
         title={confirm?.title}
         message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
         onCancel={() => setConfirm(null)}
         onConfirm={() => { confirm.run(); setConfirm(null); }}
       />

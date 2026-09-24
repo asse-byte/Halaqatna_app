@@ -25,7 +25,10 @@ export default function Settings() {
 
   const runEval = () => {
     setEvalBusy(true);
-    api.get("/forecast-evaluation").then((r) => setEvalRep(r.data)).catch((e) => toast.error(errMsg(e))).finally(() => setEvalBusy(false));
+    api.get("/forecast-evaluation")
+      .then((r) => (r.data?.results ? setEvalRep(r.data) : toast.error(r.data?.message || t("error"))))
+      .catch((e) => toast.error(errMsg(e)))
+      .finally(() => setEvalBusy(false));
   };
 
   const save = async (e) => {
@@ -86,7 +89,7 @@ export default function Settings() {
                   <th className="px-4 py-2 text-start">{t("eval_mae")}</th>
                   <th className="px-4 py-2 text-start">{t("eval_rmse")}</th>
                   <th className="px-4 py-2 text-start">{t("eval_bias")}</th>
-                  <th className="px-4 py-2 text-start">{t("eval_within")}</th>
+                  <th className="px-4 py-2 text-start">{t("eval_target")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">

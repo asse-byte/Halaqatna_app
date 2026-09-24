@@ -39,11 +39,13 @@ npm run build        # -> dist/, which the nginx container serves
 | `src/pages/shared/` | UC12, UC13, UC21 — performance and the four leaderboards |
 | `src/lib/i18n.jsx` | FR17 / NFR6 — ar (RTL) and en (LTR), switched at run time |
 | `src/lib/offline.js` | UC10 alternative flow 5a — queue locally, sync on reconnect |
+| `src/lib/dates.js`, `src/lib/mastery.js`, `src/lib/surahs.js` | Plain helpers, shared with the mobile client |
 | `src/locales/{ar,en}.json` | Every UI string, in both languages |
 
 ## Checks
 
 ```bash
+npm run lint                                # ESLint
 node ../scripts/check_locales.js            # NFR6: ar/en key parity, run in CI
 node --test ../scripts/check_offline_queue.mjs
 ```
