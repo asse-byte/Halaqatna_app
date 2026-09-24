@@ -388,6 +388,7 @@ schema; most of them are the code being brought back in line with what the repor
 | 7 | Unique and foreign-key violations were recognised by MySQL's wording only, so on SQLite (the demo path) they were 500s; a 404 named the internal model class. | Driver-independent handling; a plain "Not found". |
 | 8 | A refusal from the forecast evaluation ("dataset too small", §9's honest answer) reached the screen as "Something went wrong". | The ML service's reason is passed through. |
 | 9 | The demo seed contained ayah ranges past the end of the Surah, which the API itself refuses. | Bounded by the Surah's length. |
+| 10 | Every plain read of a forecast was answered `stale: true`, so the UC13 "could not update the forecast" warning appeared on every student page while the service was running normally. Found by running the assembled system, like §8. | `stale` now means what UC13 says: the last attempt to update this student's forecast failed. The flag is set when the service cannot be reached and cleared by the next forecast that succeeds. |
 
 ### 10.4 Clients
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Prediction;
 use App\Models\Student;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,8 +16,37 @@ class MlClient
         return config('halaqtna.ml.url').$path;
     }
 
-    /** Returns the freshly stored prediction, or null when the service is unavailable (UC13 fallback). */
+    /**
+     * Returns the freshly stored prediction, or null when the service is unavailable (UC13
+     * fallback). Either way it records the outcome, so a later read can say whether the
+     * stored forecast is current — see isStale().
+     */
     public function forecast(Student $student, array $metrics): ?Prediction
+    {
+        $prediction = $this->requestForecast($student, $metrics);
+        $prediction ? Cache::forget($this->staleKey($student)) : Cache::forever($this->staleKey($student), true);
+
+        return $prediction;
+    }
+
+    /**
+     * UC13 — whether the last attempt to bring this student's forecast up to date failed, so
+     * the stored one may not reflect the latest sessions. A forecast is not stale merely
+     * because nobody asked for a new one: the screens read the stored forecast on every
+     * visit, and treating that as a failure put a "could not update" warning on every page
+     * while the service was running normally.
+     */
+    public function isStale(Student $student): bool
+    {
+        return Cache::has($this->staleKey($student));
+    }
+
+    private function staleKey(Student $student): string
+    {
+        return 'forecast:stale:'.$student->student_id;
+    }
+
+    private function requestForecast(Student $student, array $metrics): ?Prediction
     {
         try {
             $resp = Http::timeout((int) config('halaqtna.ml.timeout', 3))

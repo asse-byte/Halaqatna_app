@@ -98,7 +98,7 @@ SDK 52 versions — change them with `npx expo install`, never by hand, or the b
 ### Tests
 
 ```bash
-cd api && php artisan test                   # 140 feature + unit tests, 930 assertions
+cd api && php artisan test                   # 142 feature + unit tests, 946 assertions
 cd api && php artisan test --coverage --min=70   # NFR9 — needs pcov or Xdebug
 cd frontend && npm run lint                  # ESLint over the web client
 node scripts/check_locales.js                # NFR6: ar/en key parity, and every key the clients use exists
