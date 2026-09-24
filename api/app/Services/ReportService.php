@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Circle;
+use App\Models\RecitationSession;
 use App\Models\Student;
+use App\Support\MasteryBand;
 use App\Support\Surah;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,24 +19,17 @@ class ReportService
         private PdfRenderer $pdf,
     ) {}
 
-    /**
-     * Mastery as a word rather than a number, for the places a reader needs a verdict and
-     * not a score. Shares its thresholds with the parent card so the two never disagree.
-     */
-    public static function band(?float $mastery): string
-    {
-        return \App\Http\Controllers\ShareController::masteryBand($mastery);
-    }
-
     public function studentReport(Student $student, string $locale = 'ar'): array
     {
         $sessions = $student->sessions()->with('errors.errorType', 'teacher')->orderByDesc('session_date')->get();
         $metrics = $this->analytics->metrics($student);
 
         return [
-            'student' => $student->load('circle', 'teachers'),
+            // Teachers by name only: this report is also served to the student and, as a PDF,
+            // to their guardian — neither has any business with a teacher's email or address.
+            'student' => $student->load('circle', 'teachers:user_id,name'),
             'metrics' => $metrics,
-            'band' => self::band($metrics['mastery']),
+            'band' => MasteryBand::for($metrics['mastery']),
             'xp_total' => $this->gamification->totalXp($student->student_id),
             'badges' => $student->badges()->get(),
             'prediction' => $this->ml->latest($student),
@@ -57,7 +52,7 @@ class ReportService
         $students = $circle->students()->get()->map(function ($s) {
             $m = $this->analytics->metrics($s);
             return ['student_id' => $s->student_id, 'name' => $s->name, 'current_juz' => $s->current_juz, 'is_active' => $s->is_active,
-                'mastery' => $m['mastery'], 'band' => self::band($m['mastery']), 'momentum' => $m['momentum'],
+                'mastery' => $m['mastery'], 'band' => MasteryBand::for($m['mastery']), 'momentum' => $m['momentum'],
                 'precision' => $m['precision'], 'consistency' => $m['consistency'],
                 'review_depth' => $m['review_depth'], 'total_pages' => $m['total_pages'], 'sessions_count' => $m['sessions_count'],
                 'attendance_rate' => $m['attendance_rate'], 'error_count' => $m['error_count'],
@@ -92,16 +87,15 @@ class ReportService
 
         $rows = $students->map(function ($s) {
             $m = $this->analytics->metrics($s);
-            $last = $s->sessions()->orderByDesc('session_date')->first();
             return [
                 'student_id' => $s->student_id, 'name' => $s->name, 'current_juz' => $s->current_juz,
                 'is_active' => (bool) $s->is_active,
-                'mastery' => $m['mastery'], 'band' => self::band($m['mastery']),
+                'mastery' => $m['mastery'], 'band' => MasteryBand::for($m['mastery']),
                 'momentum' => $m['momentum'], 'precision' => $m['precision'], 'consistency' => $m['consistency'],
                 'review_depth' => $m['review_depth'], 'total_pages' => $m['total_pages'],
                 'sessions_count' => $m['sessions_count'], 'attendance_rate' => $m['attendance_rate'],
                 'trend' => $m['trend_summary'], 'teachers' => $s->teachers->pluck('name')->values(),
-                'last_session_date' => $last?->session_date,
+                'last_session_date' => $m['last_session_date'],
                 'prediction' => $this->ml->latest($s),
             ];
         })->values();
@@ -122,7 +116,7 @@ class ReportService
                 'avg_attendance' => $active->isEmpty() ? null : round((float) $active->avg('attendance_rate') * 100, 1),
                 'sessions_this_week' => $this->sessionsThisWeek($active->pluck('student_id')->all()),
             ],
-            'improving' => $rows->where('trend.direction', 'UP')->pluck('name')->values(),
+            'improving' => $active->where('trend.direction', 'UP')->pluck('name')->values(),
             'needs_attention' => $rows->filter(fn ($r) => $r['is_active'] && ($r['trend']['direction'] === 'DOWN' || ($r['consistency'] !== null && $r['consistency'] < 60)))
                 ->sortBy('mastery')->values(),
             'students' => $rows,
@@ -133,26 +127,38 @@ class ReportService
     {
         if (!$studentIds) return 0;
 
-        return \App\Models\RecitationSession::whereIn('student_id', $studentIds)
+        return RecitationSession::whereIn('student_id', $studentIds)
             ->where('session_date', '>=', now()->startOfWeek()->toDateString())->count();
     }
 
-    /** FR15 — PDF export; file is persisted under storage (only this service writes files). */
+    /**
+     * FR15 — PDF export. Returns the PDF itself, and keeps the latest copy of each report
+     * under storage (this service is the only writer to file storage, §6).
+     *
+     * One file per report and language, overwritten on each export. The first build wrote
+     * a new timestamped file on every request and never removed one, and the guardian's
+     * link (GET /p/{token}/report.pdf) is public — so every tap on a shared link grew the
+     * disk without bound. The response is built from the bytes in memory rather than by
+     * re-reading the file, so two exports of the same report can never serve a half-written one.
+     */
     public function studentPdf(Student $student, string $locale = 'ar'): string
     {
         $data = $this->studentReport($student, $locale) + ['doc_title' => $student->name];
-        $path = "reports/student_{$student->student_id}_".now()->format('Ymd_His').'.pdf';
-        Storage::put($path, $this->pdf->render('reports.student', $data, $locale, 'P'));
 
-        return Storage::path($path);
+        return $this->store("reports/student_{$student->student_id}_{$locale}.pdf", $this->pdf->render('reports.student', $data, $locale, 'P'));
     }
 
     public function circlePdf(Circle $circle, string $locale = 'ar'): string
     {
         $data = $this->circleReport($circle) + ['doc_title' => $circle->name];
-        $path = "reports/circle_{$circle->circle_id}_".now()->format('Ymd_His').'.pdf';
-        Storage::put($path, $this->pdf->render('reports.circle', $data, $locale, 'L'));
 
-        return Storage::path($path);
+        return $this->store("reports/circle_{$circle->circle_id}_{$locale}.pdf", $this->pdf->render('reports.circle', $data, $locale, 'L'));
+    }
+
+    private function store(string $path, string $pdf): string
+    {
+        Storage::put($path, $pdf);
+
+        return $pdf;
     }
 }

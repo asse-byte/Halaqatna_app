@@ -96,6 +96,7 @@ abstract class TestCase extends BaseTestCase
         foreach (['sys@x.sa', 'a1@x.sa', 'a2@x.sa', 't1@x.sa', 't2@x.sa', 'nobody@x.sa'] as $email) {
             RateLimiter::clear('login:staff:127.0.0.1:'.$email);
         }
+        RateLimiter::clear('login:staff:hourly:127.0.0.1');
         RateLimiter::clear('login:student:127.0.0.1');
         RateLimiter::clear('login:student:hourly:127.0.0.1');
     }

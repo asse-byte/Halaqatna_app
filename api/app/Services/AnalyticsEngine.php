@@ -16,9 +16,38 @@ class AnalyticsEngine
 {
     public const HIGH_SEVERITY = ['MEM_GAP', 'LNK_ERR'];
 
+    /** Provisional: pages per Juz — mirrored by PAGES_PER_JUZ in ml/main.py and ml/evaluation.py. */
+    public const PAGES_PER_JUZ = 20;
+
+    /** Settings read once per engine instance: the trend alone evaluates Mastery once per week. */
+    private array $settings = [];
+
+    private function setting(string $key, float $default): float
+    {
+        return $this->settings[$key] ??= SystemSetting::num($key, $default);
+    }
+
+    /** d_max is a divisor. It is validated on write (UC3); this only keeps a bad row from being a 500. */
+    private function dMax(): float
+    {
+        $dMax = $this->setting('d_max', 3.0);
+
+        return $dMax > 0 ? $dMax : 3.0;
+    }
+
     private function sessions(Student $student): Collection
     {
         return $student->sessions()->with('errors.errorType')->orderBy('session_date')->orderBy('session_id')->get();
+    }
+
+    /**
+     * The most recent sessions by DATE. Ordering by session_id instead would treat a session
+     * entered late — a register filled in for last week, or an offline queue synced days
+     * afterwards — as the newest one, and push genuinely recent sessions out of the window.
+     */
+    private function latest(Collection $sessions, int $n): Collection
+    {
+        return $sessions->sortBy([['session_date', 'desc'], ['session_id', 'desc']])->take($n);
     }
 
     // §3.1 weighted error load
@@ -36,11 +65,10 @@ class AnalyticsEngine
     // §3.3 mastery over the last 8 sessions
     public function mastery(Collection $sessions): ?float
     {
-        $dMax = SystemSetting::num('d_max', 3.0);
-        $densities = $sessions->sortByDesc('session_id')->take(8)->map(fn ($s) => $this->errorDensity($s))->filter(fn ($d) => $d !== null);
+        $densities = $this->latest($sessions, 8)->map(fn ($s) => $this->errorDensity($s))->filter(fn ($d) => $d !== null);
         if ($densities->isEmpty()) return null;
         $dMean = $densities->avg();
-        return round(100 * (1 - min(1, $dMean / $dMax)), 1);
+        return round(100 * (1 - min(1, $dMean / $this->dMax())), 1);
     }
 
     /**
@@ -53,7 +81,7 @@ class AnalyticsEngine
         $d = $this->errorDensity($s);
         if ($d === null) return null;
 
-        return round(100 * (1 - min(1, $d / SystemSetting::num('d_max', 3.0))), 1);
+        return round(100 * (1 - min(1, $d / $this->dMax())), 1);
     }
 
     /** Pages per ISO week, filled from the first session week to the current week. */
@@ -75,7 +103,7 @@ class AnalyticsEngine
     // §3.4 momentum EWMA
     public function momentum(Collection $sessions): float
     {
-        $alpha = SystemSetting::num('alpha', 0.4);
+        $alpha = $this->setting('alpha', 0.4);
         $ewma = null;
         foreach ($this->weeklyPages($sessions) as $pages) {
             $ewma = $ewma === null ? $pages : $alpha * $pages + (1 - $alpha) * $ewma;
@@ -86,6 +114,7 @@ class AnalyticsEngine
     // §3.5 precision
     public function precision(Collection $sessions): ?float
     {
+        if ($sessions->isEmpty()) return null;
         $total = 0.0; $high = 0.0;
         foreach ($sessions as $s) {
             foreach ($s->errors as $e) {
@@ -94,7 +123,6 @@ class AnalyticsEngine
                 if (in_array($e->errorType->code, self::HIGH_SEVERITY, true)) $high += $w;
             }
         }
-        if ($sessions->isEmpty()) return null;
         if ($total == 0) return 100.0;
         return round(100 * (1 - $high / $total), 1);
     }
@@ -102,7 +130,7 @@ class AnalyticsEngine
     // §3.6 consistency over the last 8 scheduled sessions
     public function consistency(Collection $sessions): ?float
     {
-        $last = $sessions->sortByDesc('session_id')->take(8);
+        $last = $this->latest($sessions, 8);
         if ($last->isEmpty()) return null;
         $attended = $last->filter(fn ($s) => in_array($s->attendance_status, ['P', 'L'], true))->count();
         return round($attended / $last->count() * 100, 1);
@@ -241,9 +269,10 @@ class AnalyticsEngine
             'sessions_count' => $sessions->count(),
             'total_pages' => round((float) $sessions->sum('pages_memorized'), 2),
             'total_new_pages' => round($newPages, 2),
-            'pages_in_current_juz' => round(fmod($newPages, 20), 2),   // [BUILD] provisional: 20 pages per Juz
+            'pages_in_current_juz' => round(fmod($newPages, self::PAGES_PER_JUZ), 2),
             'weekly_pages' => $this->weeklyPages($sessions),
-            'constants' => ['d_max' => SystemSetting::num('d_max', 3.0), 'alpha' => SystemSetting::num('alpha', 0.4), 'provisional' => true],
+            'last_session_date' => $sessions->isEmpty() ? null : (string) $sessions->max('session_date'),
+            'constants' => ['d_max' => $this->dMax(), 'alpha' => $this->setting('alpha', 0.4), 'provisional' => true],
         ];
     }
 }

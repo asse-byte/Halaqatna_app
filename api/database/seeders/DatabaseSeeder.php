@@ -15,6 +15,7 @@ use App\Models\SystemSetting;
 use App\Models\XpLedger;
 use App\Services\AnalyticsEngine;
 use App\Services\GamificationEngine;
+use App\Support\Surah;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -53,11 +54,7 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // System administrator (real owner email) — idempotent
-        $sysAdmin = StaffUser::updateOrCreate(['email' => env('SYS_ADMIN_EMAIL')], [
-            'name' => 'Abdoul Malick Cisse', 'password_hash' => Hash::make(env('SYS_ADMIN_PASSWORD')),
-            'role_id' => Role::where('code', 'SYS_ADMIN')->value('role_id'), 'circle_id' => null, 'locale' => 'en',
-        ]);
+        $sysAdmin = $this->systemAdministrator();
 
         if (Circle::count() > 0) return; // demo data only once
 
@@ -106,7 +103,10 @@ class DatabaseSeeder extends Seeder
                     $pages = $absent ? 0 : round(max(0.25, $ppw / 3 + (mt_rand(-50, 50) / 100)), 2);
                     // An absent student recited nothing, so their row carries no passage —
                     // the range columns are nullable precisely so this stays honest.
-                    $surah = 78 + $i; $ayah = 1 + $w * 3;
+                    // A passage inside the Surah: the API refuses an ayah past the Surah's end,
+                    // and the seed must not contain rows the API itself would reject.
+                    $surah = 78 + $i;
+                    $ayah = min(1 + $w * 3, Surah::ayahCount($surah) - 8);
                     $s = RecitationSession::create(['student_id' => $st->student_id, 'user_id' => $teacher->user_id, 'session_date' => $date->toDateString(),
                         'surah_from' => $absent ? null : $surah, 'ayah_from' => $absent ? null : $ayah,
                         'surah_to' => $absent ? null : $surah, 'ayah_to' => $absent ? null : $ayah + 8,
@@ -136,5 +136,31 @@ class DatabaseSeeder extends Seeder
 
         DB::table('audit_log')->insert(['actor_user_id' => $sysAdmin->user_id, 'action' => 'CREATE', 'entity' => 'seed', 'entity_id' => null,
             'payload_json' => json_encode(['event' => 'demo data seeded']), 'created_at' => now()]);
+    }
+
+    /**
+     * The System Administrator (FR19), from SYS_ADMIN_EMAIL / SYS_ADMIN_PASSWORD.
+     *
+     * Refuses to run without both, rather than seeding an account with an empty password or
+     * no email. The password is set when the account is created and never overwritten by a
+     * later seed: once the administrator has changed it on the My Account page, re-running
+     * the seeder must not quietly put the value from .env back.
+     */
+    private function systemAdministrator(): StaffUser
+    {
+        $email = strtolower(trim((string) config('halaqtna.sys_admin.email')));
+        $password = (string) config('halaqtna.sys_admin.password');
+        if ($email === '' || strlen($password) < 8) {
+            throw new \RuntimeException('Set SYS_ADMIN_EMAIL and SYS_ADMIN_PASSWORD (at least 8 characters) in api/.env before seeding.');
+        }
+
+        $admin = StaffUser::firstOrNew(['email' => $email]);
+        if (!$admin->exists) {
+            $admin->password_hash = Hash::make($password);
+        }
+        $admin->fill(['name' => $admin->name ?? 'Abdoul Malick Cisse', 'role_id' => Role::where('code', 'SYS_ADMIN')->value('role_id'),
+            'circle_id' => null, 'locale' => $admin->locale ?? 'en'])->save();
+
+        return $admin;
     }
 }

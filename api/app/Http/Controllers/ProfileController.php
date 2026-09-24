@@ -32,14 +32,14 @@ class ProfileController extends Controller
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
         $u = $a['model'];
+        $this->lowercaseEmail($r);
         $d = $r->validate([
             'name' => 'sometimes|string|max:120',
             'email' => 'sometimes|email|max:160|unique:staff_user,email,'.$u->user_id.',user_id',
-            'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
+            'phone' => self::PHONE_RULE,
             'address' => 'nullable|string|max:200',
             'locale' => 'sometimes|in:ar,en',
         ]);
-        if (isset($d['email'])) $d['email'] = strtolower($d['email']);
         $u->fill($d)->save();
         $this->audit->log($a, 'UPDATE', 'staff_user', $u->user_id, $d + ['event' => 'self_service_profile']);
 
@@ -50,6 +50,9 @@ class ProfileController extends Controller
      * The current password is required even though the caller already holds a valid token:
      * it is what stops a borrowed unlocked phone from locking the real teacher out of their
      * own account. The new hash is bcrypt, as NFR3 requires.
+     *
+     * Changing the password signs out every other device (the tokens carry a fingerprint of
+     * the old hash), so the response carries a fresh token for the device that made the change.
      */
     public function changePassword(Request $r)
     {
@@ -57,7 +60,7 @@ class ProfileController extends Controller
         $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN', 'TEACHER']);
         $d = $r->validate([
             'current_password' => 'required|string',
-            'new_password' => 'required|string|min:8|confirmed',
+            'new_password' => 'required|'.self::PASSWORD_RULE.'|confirmed',
         ]);
         $u = $a['model'];
         abort_unless(Hash::check($d['current_password'], $u->password_hash), 422, 'The current password is not correct');
@@ -68,6 +71,6 @@ class ProfileController extends Controller
         // Only the fact of the change is recorded. Neither password reaches the audit trail.
         $this->audit->log($a, 'UPDATE', 'staff_user', $u->user_id, ['event' => 'self_service_password_change']);
 
-        return response()->json(['changed' => true]);
+        return response()->json(['changed' => true, 'token' => $this->rbac->staffToken($u)]);
     }
 }

@@ -36,7 +36,7 @@ class ArabicPdfTest extends TestCase
      */
     public function test_the_arabic_report_is_shaped_not_drawn_letter_by_letter(): void
     {
-        $pdf = file_get_contents(app(ReportService::class)->studentPdf($this->s1->fresh(), 'ar'));
+        $pdf = app(ReportService::class)->studentPdf($this->s1->fresh(), 'ar');
 
         $this->assertStringStartsWith('%PDF-', $pdf);
         $this->assertGreaterThan(10_000, strlen($pdf), 'An Arabic report with a real embedded font is not a few kilobytes.');
@@ -49,16 +49,16 @@ class ArabicPdfTest extends TestCase
     public function test_both_languages_render_and_differ(): void
     {
         $reports = app(ReportService::class);
-        $ar = file_get_contents($reports->studentPdf($this->s1->fresh(), 'ar'));
-        $en = file_get_contents($reports->studentPdf($this->s1->fresh(), 'en'));
+        $ar = $reports->studentPdf($this->s1->fresh(), 'ar');
+        $en = $reports->studentPdf($this->s1->fresh(), 'en');
 
         $this->assertStringStartsWith('%PDF-', $ar);
         $this->assertStringStartsWith('%PDF-', $en);
         // If the Arabic build silently fell back to the English one the two would be near-identical.
         $this->assertNotSame(strlen($ar), strlen($en));
 
-        $this->assertStringStartsWith('%PDF-', file_get_contents($reports->circlePdf(Circle::find($this->c1->circle_id), 'ar')));
-        $this->assertStringStartsWith('%PDF-', file_get_contents($reports->circlePdf(Circle::find($this->c1->circle_id), 'en')));
+        $this->assertStringStartsWith('%PDF-', $reports->circlePdf(Circle::find($this->c1->circle_id), 'ar'));
+        $this->assertStringStartsWith('%PDF-', $reports->circlePdf(Circle::find($this->c1->circle_id), 'en'));
     }
 
     /** NFR6 — every word the reports print exists in both languages. */

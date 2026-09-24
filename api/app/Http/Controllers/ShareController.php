@@ -6,6 +6,8 @@ use App\Models\ProgressShareLink;
 use App\Models\Student;
 use App\Services\AnalyticsEngine;
 use App\Services\MlClient;
+use App\Services\ReportService;
+use App\Support\MasteryBand;
 use Illuminate\Http\Request;
 
 /**
@@ -20,26 +22,17 @@ use Illuminate\Http\Request;
  */
 class ShareController extends Controller
 {
-    /** Mastery is published as a band, never as the raw score (§2.13). */
-    public const BANDS = [90 => 'EXCELLENT', 75 => 'STRONG', 50 => 'DEVELOPING', 0 => 'NEEDS_WORK'];
-
-    public static function masteryBand(?float $mastery): string
-    {
-        if ($mastery === null) return 'NO_DATA';
-        foreach (self::BANDS as $floor => $band) {
-            if ($mastery >= $floor) return $band;
-        }
-        return 'NEEDS_WORK';
-    }
+    /** §2.13 — thirty days by default, and never longer: a link is not a standing credential. */
+    public const MAX_DAYS = 30;
 
     /** UC25 — issue a link. Only the student's own teacher, or their Circle Supervisor. */
     public function issue(Request $r, int $id)
     {
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['TEACHER', 'CIRCLE_ADMIN']);
-        $days = (int) $r->input('days', 30);   // §2.13 default expiry: 30 days
+        $d = $r->validate(['days' => 'sometimes|integer|min:1|max:'.self::MAX_DAYS]);
         $student = Student::findOrFail($id);
-        $link = $this->rbac->issueShareLink($a, $student, $days > 0 ? $days : 30);
+        $link = $this->rbac->issueShareLink($a, $student, (int) ($d['days'] ?? self::MAX_DAYS));
         $this->audit->log($a, 'CREATE', 'progress_share_link', $link->link_id, ['student_id' => $id, 'expires_at' => (string) $link->expires_at]);
 
         return response()->json([
@@ -77,25 +70,34 @@ class ShareController extends Controller
      * the controls §2.13 put on the card: it expires, it is revocable, an unknown or retired
      * token is a flat 404, and every download is audited. The parent still holds no account.
      */
-    public function reportPdf(Request $r, string $token, \App\Services\ReportService $reports)
+    public function reportPdf(Request $r, string $token, ReportService $reports)
     {
         $link = $this->rbac->resolveShareToken($token);
         $student = $link->student()->firstOrFail();
-        $locale = in_array($r->query('lang'), ['ar', 'en'], true) ? $r->query('lang') : ($student->locale ?: 'ar');
+        $locale = $this->locale($r, $student);
 
-        $link->increment('view_count');
-        $link->last_viewed_at = now();
-        $link->save();
+        $this->recordView($link);
         $this->audit->anonymous('VIEW', 'progress_share_link', $link->link_id, [
             'student_id' => $student->student_id, 'ip' => $r->ip(), 'artifact' => 'student_report_pdf',
         ]);
 
-        return response()->file($reports->studentPdf($student, $locale), [
+        return response($reports->studentPdf($student, $locale), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="halaqtna_report.pdf"',
             'X-Robots-Tag' => 'noindex, nofollow, noarchive',
             'Cache-Control' => 'no-store, private',
         ]);
+    }
+
+    /** ?lang= when the parent switched language on the card, otherwise the student's own. */
+    private function locale(Request $r, Student $student): string
+    {
+        return in_array($r->query('lang'), ['ar', 'en'], true) ? $r->query('lang') : ($student->locale ?: 'ar');
+    }
+
+    private function recordView(ProgressShareLink $link): void
+    {
+        $link->forceFill(['view_count' => $link->view_count + 1, 'last_viewed_at' => now()])->save();
     }
 
     /** UC25 — revoke. The teacher who created it can revoke it at any time (§2.13). */
@@ -138,22 +140,20 @@ class ShareController extends Controller
             'attended_this_week' => $thisWeek->whereIn('attendance_status', ['P', 'L'])->count(),
             'sessions_this_week' => $thisWeek->count(),
             'current_juz' => (int) $student->current_juz,
-            'mastery_band' => self::masteryBand($metrics['mastery']),
+            'mastery_band' => MasteryBand::for($metrics['mastery']),
             'predicted_completion_date' => $prediction?->predicted_completion_date,
         ];
 
         // Every view is audited (FR18). The link holder is not a system actor, so the row
         // has no actor_user_id; the link and student it concerns are in the payload.
-        $link->increment('view_count');
-        $link->last_viewed_at = now();
-        $link->save();
+        $this->recordView($link);
         $this->audit->anonymous('VIEW', 'progress_share_link', $link->link_id, [
             'student_id' => $student->student_id,
             'ip' => $r->ip(),
             'view_count' => $link->view_count,
         ]);
 
-        $locale = in_array($r->query('lang'), ['ar', 'en'], true) ? $r->query('lang') : ($student->locale ?: 'ar');
+        $locale = $this->locale($r, $student);
 
         // noindex header + meta tag in the view, so the page is never indexed (§2.13).
         return response()

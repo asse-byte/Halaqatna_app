@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
+use App\Models\ProgressShareLink;
+use App\Models\RecitationSession;
 use App\Models\Role;
 use App\Models\StaffUser;
 use Illuminate\Http\Request;
@@ -22,7 +25,7 @@ class StaffController extends Controller
      * stored value alone, and an explicit null is a 422 instead of a database error.
      */
     private const PROFILE_RULES = [
-        'phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
+        'phone' => self::PHONE_RULE,
         'address' => 'nullable|string|max:200',
         'locale' => 'sometimes|in:ar,en',
     ];
@@ -47,17 +50,17 @@ class StaffController extends Controller
     {
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
+        $this->lowercaseEmail($r);
         $d = $r->validate(self::PROFILE_RULES + [
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:160|unique:staff_user,email',
-            'password' => 'required|string|min:6',
+            'password' => 'required|'.self::PASSWORD_RULE,
             'circle_id' => 'required|integer|exists:circle,circle_id',
         ]);
         $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
-        // array_merge, not `+`: the union operator keeps the LEFT value on a key clash, which
-        // would let the raw email shadow the lower-cased one written here.
+        // array_merge, not `+`: the union operator keeps the LEFT value on a key clash, so
+        // an explicit null locale would shadow the default written here.
         $u = StaffUser::create(array_merge(collect($d)->except('password')->all(), [
-            'email' => strtolower($d['email']),
             'password_hash' => Hash::make($d['password']),
             'role_id' => Role::where('code', 'TEACHER')->value('role_id'),
             'locale' => $d['locale'] ?? 'ar',
@@ -78,30 +81,33 @@ class StaffController extends Controller
         $u = StaffUser::with('role')->findOrFail($id);
         $this->requireManagementOf($a, $u);
 
+        $this->lowercaseEmail($r);
         $d = $r->validate(self::PROFILE_RULES + [
             'is_active' => 'sometimes|boolean',
             'name' => 'sometimes|string|max:120',
             'email' => 'sometimes|email|max:160|unique:staff_user,email,'.$u->user_id.',user_id',
-            'password' => 'sometimes|string|min:6',
+            'password' => 'sometimes|'.self::PASSWORD_RULE,
             'circle_id' => 'sometimes|integer|exists:circle,circle_id',
         ]);
         if (isset($d['circle_id']) && $a['role'] !== 'SYS_ADMIN') $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
-        if (isset($d['email'])) $d['email'] = strtolower($d['email']);
-        if (isset($d['password'])) {
+        $passwordReset = isset($d['password']);
+        if ($passwordReset) {
+            // A reset also signs the account out everywhere: its tokens carry the old hash's fingerprint.
             $u->password_hash = Hash::make($d['password']);
             unset($d['password']);
         }
         $u->fill($d)->save();
         // The password itself is never written to the audit payload — only that it changed.
-        $this->audit->log($a, 'UPDATE', 'staff_user', $u->user_id, $d + ($r->filled('password') ? ['password' => 'reset'] : []));
+        $this->audit->log($a, 'UPDATE', 'staff_user', $u->user_id, $d + ($passwordReset ? ['password' => 'reset'] : []));
 
         return response()->json($u->toPublic());
     }
 
     /**
-     * Remove a staff record created by mistake. Refused once the teacher has recorded
-     * sessions: session.user_id is RESTRICT in Table 4.1 precisely so that the author of a
-     * record cannot vanish from it. Suspension is the route for someone who has taught.
+     * Remove a staff record created by mistake. Refused once the account has left a trace:
+     * session.user_id, progress_share_link.created_by_user_id and audit_log.actor_user_id
+     * are all RESTRICT (Table 4.1) precisely so that the author of a record cannot vanish
+     * from it. Suspension is the route for someone who has worked in the system.
      */
     public function destroy(Request $r, int $id)
     {
@@ -109,7 +115,10 @@ class StaffController extends Controller
         $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
         $u = StaffUser::with('role')->findOrFail($id);
         $this->requireManagementOf($a, $u);
-        abort_if(\App\Models\RecitationSession::where('user_id', $u->user_id)->exists(), 409, 'This teacher has recorded sessions. Suspend the account instead of deleting it.');
+        $hasHistory = RecitationSession::where('user_id', $u->user_id)->exists()
+            || ProgressShareLink::where('created_by_user_id', $u->user_id)->exists()
+            || AuditLog::where('actor_user_id', $u->user_id)->exists();
+        abort_if($hasHistory, 409, 'This account already has recorded activity. Suspend it instead of deleting it.');
 
         $name = $u->name;
         $u->students()->detach();
