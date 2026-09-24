@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Badge;
 use App\Models\Challenge;
-use App\Models\Student;
 use App\Models\StaffUser;
+use App\Models\Student;
 use App\Models\XpLedger;
 use App\Services\AnalyticsEngine;
 use App\Services\GamificationEngine;
 use App\Services\MlClient;
 use App\Services\ReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /** UC5 roster, UC12/UC19–UC23 student reads. Access decisions are delegated to AuthRbacService. */
 class StudentController extends Controller
@@ -56,7 +58,7 @@ class StudentController extends Controller
      * than reaching the database and failing there as a 500.
      */
     private const PROFILE_RULES = [
-        'guardian_phone' => 'nullable|string|max:24|regex:/^[0-9+\s()-]{6,24}$/',
+        'guardian_phone' => self::PHONE_RULE,
         'address' => 'nullable|string|max:200',
         'age' => 'nullable|integer|min:3|max:99',
         'current_juz' => 'sometimes|integer|min:1|max:30',
@@ -75,15 +77,19 @@ class StudentController extends Controller
         $d = $r->validate(self::PROFILE_RULES + ['name' => 'required|string|max:120', 'circle_id' => 'required|integer|exists:circle,circle_id',
             'teacher_ids' => 'nullable|array', 'teacher_ids.*' => 'integer|exists:staff_user,user_id']);
         $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
-        // array_merge, not `+`: the union operator keeps the LEFT value, so a field sent as
-        // null would shadow the default written here rather than being replaced by it.
-        $s = Student::create(array_merge(collect($d)->except('teacher_ids')->all(), [
-            'current_juz' => $d['current_juz'] ?? 1, 'locale' => $d['locale'] ?? 'ar',
-            'access_code' => $this->rbac->generateAccessCode(), 'access_code_issued_at' => now(),
-        ]));
         $teacherIds = $d['teacher_ids'] ?? [];
-        $this->assignTeachers($s, $teacherIds);
-        $this->audit->log($a, 'CREATE', 'student', $s->student_id, ['circle_id' => $s->circle_id, 'teacher_ids' => $teacherIds]);
+        $s = DB::transaction(function () use ($d, $a, $teacherIds) {
+            // array_merge, not `+`: the union operator keeps the LEFT value, so a field sent as
+            // null would shadow the default written here rather than being replaced by it.
+            $s = Student::create(array_merge(collect($d)->except('teacher_ids')->all(), [
+                'current_juz' => $d['current_juz'] ?? 1, 'locale' => $d['locale'] ?? 'ar',
+                'access_code' => $this->rbac->generateAccessCode(), 'access_code_issued_at' => now(),
+            ]));
+            $this->assignTeachers($s, $teacherIds);
+            $this->audit->log($a, 'CREATE', 'student', $s->student_id, ['circle_id' => $s->circle_id, 'teacher_ids' => $teacherIds]);
+
+            return $s;
+        });
         return response()->json($s->load('teachers:user_id,name'), 201);
     }
 
@@ -95,14 +101,19 @@ class StudentController extends Controller
         $this->rbac->requireStudentManagement($a, $s);
         $d = $r->validate(self::PROFILE_RULES + ['name' => 'sometimes|string|max:120', 'is_active' => 'sometimes|boolean',
             'circle_id' => 'sometimes|integer|exists:circle,circle_id', 'teacher_ids' => 'sometimes|array', 'teacher_ids.*' => 'integer|exists:staff_user,user_id']);
-        if (isset($d['circle_id']) || isset($d['is_active'])) $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
-        if (isset($d['circle_id'])) $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
-        if (array_key_exists('teacher_ids', $d)) {
+        // Enrolment, suspension and assignment are the Supervisor's (FR20); an assigned teacher
+        // may keep the profile itself current — guardian number, age, current Juz.
+        if (array_key_exists('circle_id', $d) || array_key_exists('is_active', $d) || array_key_exists('teacher_ids', $d)) {
             $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
-            $this->assignTeachers($s, $d['teacher_ids'], true);
         }
-        $s->update(collect($d)->except('teacher_ids')->all());
-        $this->audit->log($a, 'UPDATE', 'student', $s->student_id, collect($d)->all());
+        if (isset($d['circle_id'])) $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
+        DB::transaction(function () use ($a, $s, $d) {
+            if (array_key_exists('teacher_ids', $d)) {
+                $this->assignTeachers($s, $d['teacher_ids'], true);
+            }
+            $s->update(collect($d)->except('teacher_ids')->all());
+            $this->audit->log($a, 'UPDATE', 'student', $s->student_id, $d);
+        });
         return response()->json($s->load('teachers:user_id,name'));
     }
 
@@ -120,10 +131,10 @@ class StudentController extends Controller
         $s = Student::findOrFail($id);
         $this->rbac->requireStudentManagement($a, $s);
         abort_if($s->sessions()->exists(), 409, 'This student has recorded sessions. Suspend the student instead of deleting the record.');
-        $name = $s->name;
-        $s->teachers()->detach();
-        $s->delete();
-        $this->audit->log($a, 'DELETE', 'student', $id, ['name' => $name, 'circle_id' => $s->circle_id]);
+        DB::transaction(function () use ($a, $s) {
+            $s->delete(); // student_teacher, share links and badges cascade (Table 4.1)
+            $this->audit->log($a, 'DELETE', 'student', $s->student_id, ['name' => $s->name, 'circle_id' => $s->circle_id]);
+        });
         return response()->json(['deleted' => true]);
     }
 
@@ -177,7 +188,7 @@ class StudentController extends Controller
     public function badges(Request $r, int $id)
     {
         $s = $this->studentFor($r, $id);
-        return response()->json(['earned' => $s->badges()->get(), 'all' => \App\Models\Badge::all()]);
+        return response()->json(['earned' => $s->badges()->get(), 'all' => Badge::all()]);
     }
 
     // FR13 — total is SUM(points)
@@ -196,12 +207,11 @@ class StudentController extends Controller
 
     public function joinChallenge(Request $r, int $id, int $challengeId)
     {
-        $a = $this->actor($r);
         $s = $this->studentFor($r, $id);
         $c = Challenge::findOrFail($challengeId);
         abort_if($s->challenges()->where('challenge.challenge_id', $c->challenge_id)->exists(), 409, 'Already joined');
         $s->challenges()->attach($c->challenge_id, ['status' => 'ACTIVE', 'progress' => 0, 'started_at' => now()]);
-        $this->audit->log($a, 'CREATE', 'student_challenge', $c->challenge_id, ['student_id' => $s->student_id]);
+        $this->audit->log($this->actor($r), 'CREATE', 'student_challenge', $c->challenge_id, ['student_id' => $s->student_id]);
         return response()->json($s->challenges()->get(), 201);
     }
 
@@ -213,7 +223,7 @@ class StudentController extends Controller
         $tiles = [];
         for ($j = 1; $j <= 30; $j++) {
             $tiles[] = ['juz' => $j, 'status' => $j < $s->current_juz ? 'MASTERED' : ($j == $s->current_juz ? 'IN_PROGRESS' : 'NOT_STARTED'),
-                'progress' => $j < $s->current_juz ? 100 : ($j == $s->current_juz ? round($m['pages_in_current_juz'] / 20 * 100) : 0)];
+                'progress' => $j < $s->current_juz ? 100 : ($j == $s->current_juz ? round($m['pages_in_current_juz'] / AnalyticsEngine::PAGES_PER_JUZ * 100) : 0)];
         }
         return response()->json(['current_juz' => $s->current_juz, 'tiles' => $tiles]);
     }
@@ -225,9 +235,9 @@ class StudentController extends Controller
         $this->rbac->requireRole($a, ['CIRCLE_ADMIN', 'TEACHER']);
         $s = $this->studentFor($r, $id);
         $locale = in_array($r->query('locale'), ['ar', 'en'], true) ? $r->query('locale') : 'ar';
-        $path = $reports->studentPdf($s, $locale);
+        $pdf = $reports->studentPdf($s, $locale);
         $this->audit->log($a, 'VIEW', 'student_report', $s->student_id, ['format' => 'pdf', 'locale' => $locale]);
-        return response()->file($path, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="student_'.$id.'.pdf"']);
+        return response($pdf, 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="student_'.$id.'.pdf"']);
     }
 
     public function report(Request $r, int $id, ReportService $reports)

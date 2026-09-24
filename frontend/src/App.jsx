@@ -50,6 +50,7 @@ export default function App() {
             <Route path="/admin/circle-admins" element={guard(ADMIN, <CircleAdmins />)} />
             <Route path="/admin/audit" element={guard(ADMIN, <Audit />)} />
             <Route path="/admin/settings" element={guard(ADMIN, <Settings />)} />
+            <Route path="/admin/account" element={guard(ADMIN, <MyAccount />)} />
 
             {/* FR20 / FR14 — the circle supervisor */}
             <Route path="/circle" element={guard(CADMIN, <CircleOverview />)} />

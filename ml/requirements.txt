@@ -1,7 +1,9 @@
-fastapi
-uvicorn[standard]
-scikit-learn
-numpy
-joblib
-sqlalchemy
-pymysql
+# Ranges, not bare names: an unpinned build picks up whatever was released that morning,
+# and a major version of numpy or scikit-learn is exactly the change that breaks a model.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+scikit-learn>=1.5,<2
+numpy>=2.0,<3
+joblib>=1.4,<2
+sqlalchemy>=2.0,<3
+pymysql>=1.1,<2

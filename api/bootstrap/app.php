@@ -4,8 +4,12 @@ use App\Http\Middleware\JwtAuthenticate;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -37,17 +41,24 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($r->is('p/*')) {
                 return null;
             }
-            if ($e instanceof \Illuminate\Validation\ValidationException) {
+            if ($e instanceof ValidationException) {
                 return response()->json(['message' => $e->getMessage(), 'errors' => $e->errors()], 422);
+            }
+            // findOrFail() on an unknown id. Laravel's own message names the model class
+            // ("No query results for model [App\Models\Student] 7"), which is internal detail.
+            if ($e->getPrevious() instanceof ModelNotFoundException) {
+                return response()->json(['message' => 'Not found'], 404);
             }
             if ($e instanceof HttpExceptionInterface) {
                 // Keep the exception's own headers — a 429 carries Retry-After (NFR3a, §5.1).
                 return response()->json(['message' => $e->getMessage() ?: 'Error'], $e->getStatusCode(), $e->getHeaders());
             }
-            if ($e instanceof \Illuminate\Database\QueryException && str_contains($e->getMessage(), 'Duplicate entry')) {
+            // Driver-independent: MySQL says "Duplicate entry" / "a foreign key constraint
+            // fails", SQLite says "UNIQUE constraint failed" / "FOREIGN KEY constraint failed".
+            if ($e instanceof UniqueConstraintViolationException) {
                 return response()->json(['message' => 'Duplicate entry — this record already exists'], 409);
             }
-            if ($e instanceof \Illuminate\Database\QueryException && str_contains($e->getMessage(), 'foreign key constraint')) {
+            if ($e instanceof QueryException && stripos($e->getMessage(), 'foreign key constraint') !== false) {
                 return response()->json(['message' => 'Operation refused — record is still referenced'], 409);
             }
             return null;

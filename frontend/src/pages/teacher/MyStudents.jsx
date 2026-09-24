@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { BookOpen, RefreshCw } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
-import { btnGhost, btnPrimary, PageTitle } from "../../components/ui-kit";
+import { btnGhost, btnPrimary, ConfirmDialog, PageTitle } from "../../components/ui-kit";
 
 /**
  * The teacher's own students.
@@ -16,10 +16,12 @@ import { btnGhost, btnPrimary, PageTitle } from "../../components/ui-kit";
 export default function MyStudents() {
   const { t } = useT();
   const [rows, setRows] = useState(null);
+  const [rotating, setRotating] = useState(null);
 
   const load = () => api.get("/students").then((r) => setRows(r.data)).catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, []);
 
+  /** A new code signs the student out everywhere, so it is never one stray tap away. */
   const rotateCode = (s) => api.post(`/students/${s.student_id}/access-code`)
     .then(() => { toast.success(t("code_regenerated")); load(); })
     .catch((e) => toast.error(errMsg(e)));
@@ -47,7 +49,7 @@ export default function MyStudents() {
             <div className="mt-3 flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2">
               <span className="text-xs text-muted-foreground">{t("access_code")}</span>
               <span className="font-mono font-semibold tracking-widest" dir="ltr" data-testid={`access-code-${s.student_id}`}>{s.access_code}</span>
-              <button data-testid={`regenerate-code-${s.student_id}`} className="text-muted-foreground transition-colors hover:text-primary" onClick={() => rotateCode(s)} title={t("regenerate_code")}>
+              <button data-testid={`regenerate-code-${s.student_id}`} className="text-muted-foreground transition-colors hover:text-primary" onClick={() => setRotating(s)} title={t("regenerate_code")}>
                 <RefreshCw size={14} />
               </button>
             </div>
@@ -59,6 +61,9 @@ export default function MyStudents() {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog open={!!rotating} title={t("regenerate_code")} message={`${t("confirm_rotate_code")}\n\n${rotating?.name ?? ""}`}
+        confirmLabel={t("rotate_code")} onCancel={() => setRotating(null)} onConfirm={() => { rotateCode(rotating); setRotating(null); }} />
     </div>
   );
 }

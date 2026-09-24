@@ -219,6 +219,24 @@ class DataIntegrityTest extends TestCase
     }
 
     /**
+     * Every table the migrations create is granted to the API user. The login throttle's
+     * `cache` table was missing from the grants, so on MySQL — where the API runs as the
+     * least-privileged halaqtna_api — every sign-in failed with "SELECT command denied".
+     * SQLite has no grants, which is why the suite never noticed; this reads the file.
+     */
+    public function test_every_migrated_table_is_granted_to_the_api_user(): void
+    {
+        $grants = file_get_contents($this->repoPath('scripts/db_grants.sql'));
+        $tables = collect(\Illuminate\Support\Facades\Schema::getTables())->pluck('name')
+            ->reject(fn ($t) => str_starts_with($t, 'sqlite_'));
+
+        $this->assertNotEmpty($tables);
+        foreach ($tables as $table) {
+            $this->assertMatchesRegularExpression("/GRANT [A-Z, ]+ ON halaqtna\\.{$table} TO 'halaqtna_api'/", $grants, "no grant for table {$table}");
+        }
+    }
+
+    /**
      * A NOT NULL column must be refused at validation, not at the database.
      *
      * `current_juz` and `locale` carry a default and are NOT NULL, so a request sending an

@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useFocusEffect } from "@react-navigation/native";
 import { api, errMsg } from "../api";
 import { useT } from "../i18n";
+import { localToday } from "../dates";
 
 /**
  * Taking the register on the phone (FR4).
@@ -19,7 +20,7 @@ const TONE = { P: "#D1FAE5", A: "#FEE2E2", E: "#E2E8F0" };
 
 export default function AttendanceScreen() {
   const { t } = useT();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localToday());
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(false);
 

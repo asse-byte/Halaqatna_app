@@ -15,7 +15,7 @@ class ProgressShareLink extends Model
     public $timestamps = false;
     protected $guarded = [];
     protected $hidden = ['token'];
-    protected $casts = ['view_count' => 'integer'];
+    protected $casts = ['view_count' => 'integer', 'expires_at' => 'datetime', 'revoked_at' => 'datetime', 'last_viewed_at' => 'datetime'];
 
     public function student() { return $this->belongsTo(Student::class, 'student_id'); }
 

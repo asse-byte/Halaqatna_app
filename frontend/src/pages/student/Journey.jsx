@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { toast } from "sonner";
+import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
 import { PageTitle } from "../../components/ui-kit";
@@ -10,7 +11,7 @@ export default function Journey() {
   const { t } = useT();
   const { actor } = useAuth();
   const [j, setJ] = useState(null);
-  useEffect(() => { api.get(`/students/${actor.student_id}/journey`).then((r) => setJ(r.data)); }, []);
+  useEffect(() => { api.get(`/students/${actor.student_id}/journey`).then((r) => setJ(r.data)).catch((e) => toast.error(errMsg(e))); }, [actor.student_id]);
   return (
     <div>
       <PageTitle title={t("journey_title")} subtitle={`${t("current_juz")}: ${j?.current_juz ?? "…"}`} />

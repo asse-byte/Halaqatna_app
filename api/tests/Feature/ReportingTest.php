@@ -117,13 +117,29 @@ class ReportingTest extends TestCase
 
         $res->assertOk();
         $this->assertSame('application/pdf', $res->headers->get('Content-Type'));
-        // response()->file() is a BinaryFileResponse, so read the file it points at.
-        $this->assertStringStartsWith('%PDF-', file_get_contents($res->baseResponse->getFile()->getPathname()));
+        $this->assertStringStartsWith('%PDF-', $res->getContent());
 
         // §6 — the Report Service is the only writer to file storage.
         $written = Storage::disk('local')->files('reports');
         $this->assertCount(1, $written);
         $this->assertStringContainsString("student_{$this->s1->student_id}_", $written[0]);
+        $this->assertSame($res->getContent(), Storage::disk('local')->get($written[0]), 'the stored copy is the one that was served');
+    }
+
+    /**
+     * Exporting the same report again replaces its stored copy instead of adding one. The
+     * guardian's link is public, so a file per request would grow the disk without bound.
+     */
+    public function test_repeated_exports_keep_one_copy_per_report_and_language(): void
+    {
+        $this->history();
+        $t = $this->token('t1@x.sa');
+
+        foreach (['ar', 'ar', 'en', 'en', 'ar'] as $locale) {
+            $this->as($t)->get("/api/students/{$this->s1->student_id}/report.pdf?locale={$locale}")->assertOk();
+        }
+
+        $this->assertCount(2, Storage::disk('local')->files('reports'));
     }
 
     public function test_circle_pdf_is_generated_and_stored(): void
@@ -144,10 +160,9 @@ class ReportingTest extends TestCase
         $reports = app(ReportService::class);
 
         foreach (['en', 'ar'] as $locale) {
-            $path = $reports->studentPdf($this->s1->fresh(), $locale);
-            $this->assertStringStartsWith('%PDF-', file_get_contents($path));
+            $this->assertStringStartsWith('%PDF-', $reports->studentPdf($this->s1->fresh(), $locale));
         }
-        $this->assertStringStartsWith('%PDF-', file_get_contents($reports->circlePdf(Circle::find($this->c1->circle_id), 'ar')));
+        $this->assertStringStartsWith('%PDF-', $reports->circlePdf(Circle::find($this->c1->circle_id), 'ar'));
     }
 
     public function test_pdf_export_is_refused_to_a_student(): void

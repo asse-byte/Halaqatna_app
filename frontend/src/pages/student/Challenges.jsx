@@ -10,7 +10,7 @@ export default function Challenges() {
   const { t, locale } = useT();
   const { actor } = useAuth();
   const [d, setD] = useState(null);
-  const load = () => api.get(`/students/${actor.student_id}/challenges`).then((r) => setD(r.data));
+  const load = () => api.get(`/students/${actor.student_id}/challenges`).then((r) => setD(r.data)).catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, []);
   const join = (c) => api.post(`/students/${actor.student_id}/challenges/${c.challenge_id}/join`).then(() => { toast.success(t("joined")); load(); }).catch((e) => toast.error(errMsg(e)));
   const title = (c) => (locale === "ar" ? c.title_ar : c.title_en);

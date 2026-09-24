@@ -12,12 +12,17 @@ import { ayahCount, surahName, SURAH_NUMBERS } from "../lib/surahs";
  * Surah, the notes on the recitation. The correction is written to the audit trail, and the
  * encouragement points are settled with a compensating entry rather than by rewriting the
  * ledger, which stays append-only.
+ *
+ * A row taken from the register carries no passage. The range fields stay closed until the
+ * teacher adds one, so correcting only the date or the status never invents a passage the
+ * student did not recite. An absence carries no passage, pages or notes at all.
  */
 export function SessionEditor({ session, onClose, onSaved }) {
   const { t, locale } = useT();
   const [types, setTypes] = useState([]);
   const [busy, setBusy] = useState(false);
   const [ayahRef, setAyahRef] = useState("");
+  const [withPassage, setWithPassage] = useState(Boolean(session.surah_from));
   const [f, setF] = useState(() => ({
     session_date: String(session.session_date).slice(0, 10),
     // Legacy "late" rows are edited as present: the register no longer offers a fourth status.
@@ -29,7 +34,7 @@ export function SessionEditor({ session, onClose, onSaved }) {
     errors: (session.errors || []).map((e) => ({ error_type_id: e.error_type_id, ayah_ref: e.ayah_ref })),
   }));
 
-  useEffect(() => { api.get("/error-types").then((r) => setTypes(r.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/error-types").then((r) => setTypes(r.data)).catch((e) => toast.error(errMsg(e))); }, []);
 
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const pickSurah = (key, n) => setF((x) => {
@@ -41,10 +46,15 @@ export function SessionEditor({ session, onClose, onSaved }) {
   });
   const surahOptions = useMemo(() => SURAH_NUMBERS.map((n) => [n, `${n}. ${surahName(n, locale)}`]), [locale]);
 
+  const absent = f.attendance_status === "A";
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
-    try { await api.put(`/sessions/${session.session_id}`, f); onSaved(); }
+    const range = withPassage && !absent
+      ? { surah_from: f.surah_from, ayah_from: f.ayah_from, surah_to: f.surah_to, ayah_to: f.ayah_to }
+      : { surah_from: null, ayah_from: null, surah_to: null, ayah_to: null };
+    const body = { ...f, ...range, pages_memorized: absent ? 0 : f.pages_memorized, errors: absent ? [] : f.errors };
+    try { await api.put(`/sessions/${session.session_id}`, body); onSaved(); }
     catch (err) { toast.error(errMsg(err)); }
     finally { setBusy(false); }
   };
@@ -56,9 +66,11 @@ export function SessionEditor({ session, onClose, onSaved }) {
           <Field label={t("session_date")}>
             <input data-testid="edit-date" className={inputCls} type="date" value={f.session_date} onChange={(e) => set("session_date", e.target.value)} required />
           </Field>
-          <Field label={t("pages_memorized")}>
-            <input data-testid="edit-pages" className={inputCls} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} required />
-          </Field>
+          {!absent && (
+              <Field label={t("pages_memorized")}>
+                <input data-testid="edit-pages" className={inputCls} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} required />
+              </Field>
+          )}
         </div>
 
         <div>
@@ -81,47 +93,57 @@ export function SessionEditor({ session, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t("surah_from")}>
-            <select data-testid="edit-surah-from" className={inputCls} value={f.surah_from} onChange={(e) => pickSurah("surah_from", Number(e.target.value))}>
-              {surahOptions.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
-            </select>
-          </Field>
-          <Field label={t("surah_to")}>
-            <select data-testid="edit-surah-to" className={inputCls} value={f.surah_to} onChange={(e) => pickSurah("surah_to", Number(e.target.value))}>
-              {surahOptions.filter(([n]) => n >= f.surah_from).map(([n, label]) => <option key={n} value={n}>{label}</option>)}
-            </select>
-          </Field>
-          <Field label={t("ayah_from")} hint={t("ayah_max_hint", { n: ayahCount(f.surah_from) })}>
-            <input data-testid="edit-ayah-from" className={inputCls} type="number" min={1} max={ayahCount(f.surah_from)} value={f.ayah_from} onChange={(e) => set("ayah_from", Number(e.target.value))} />
-          </Field>
-          <Field label={t("ayah_to")} hint={t("ayah_max_hint", { n: ayahCount(f.surah_to) })}>
-            <input data-testid="edit-ayah-to" className={inputCls} type="number" min={1} max={ayahCount(f.surah_to)} value={f.ayah_to} onChange={(e) => set("ayah_to", Number(e.target.value))} />
-          </Field>
-        </div>
+        {absent && <p className="text-xs text-muted-foreground" data-testid="edit-absent-note">{t("absent_no_recitation")}</p>}
 
-        <div className="glass rounded-2xl p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">{t("errors")}</span>
-            <span className="text-xs text-muted-foreground">{t("errors_count", { n: f.errors.length })}</span>
+        {!absent && !withPassage && (
+          <button type="button" className={btnGhost} data-testid="edit-add-passage" onClick={() => setWithPassage(true)}>{t("add_passage")}</button>
+        )}
+
+        {!absent && withPassage && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("surah_from")}>
+              <select data-testid="edit-surah-from" className={inputCls} value={f.surah_from} onChange={(e) => pickSurah("surah_from", Number(e.target.value))}>
+                {surahOptions.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+              </select>
+            </Field>
+            <Field label={t("surah_to")}>
+              <select data-testid="edit-surah-to" className={inputCls} value={f.surah_to} onChange={(e) => pickSurah("surah_to", Number(e.target.value))}>
+                {surahOptions.filter(([n]) => n >= f.surah_from).map(([n, label]) => <option key={n} value={n}>{label}</option>)}
+              </select>
+            </Field>
+            <Field label={t("ayah_from")} hint={t("ayah_max_hint", { n: ayahCount(f.surah_from) })}>
+              <input data-testid="edit-ayah-from" className={inputCls} type="number" min={1} max={ayahCount(f.surah_from)} value={f.ayah_from} onChange={(e) => set("ayah_from", Number(e.target.value))} />
+            </Field>
+            <Field label={t("ayah_to")} hint={t("ayah_max_hint", { n: ayahCount(f.surah_to) })}>
+              <input data-testid="edit-ayah-to" className={inputCls} type="number" min={1} max={ayahCount(f.surah_to)} value={f.ayah_to} onChange={(e) => set("ayah_to", Number(e.target.value))} />
+            </Field>
           </div>
-          <input className={`${inputCls} mb-2`} inputMode="numeric" placeholder={t("ayah_ref")} value={ayahRef} onChange={(e) => setAyahRef(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
-            {types.map((ty) => (
-              <button type="button" key={ty.code} data-testid={`edit-error-${ty.code}`} className="chip justify-center border border-border"
-                onClick={() => set("errors", [...f.errors, { error_type_id: ty.error_type_id, ayah_ref: ayahRef || String(f.ayah_from) }])}>
-                {locale === "ar" ? ty.label_ar : ty.label_en}
-              </button>
-            ))}
+        )}
+
+        {!absent && (
+          <div className="glass rounded-2xl p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">{t("errors")}</span>
+              <span className="text-xs text-muted-foreground">{t("errors_count", { n: f.errors.length })}</span>
+            </div>
+            <input className={`${inputCls} mb-2`} inputMode="numeric" placeholder={t("ayah_ref")} value={ayahRef} onChange={(e) => setAyahRef(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2">
+              {types.map((ty) => (
+                <button type="button" key={ty.code} data-testid={`edit-error-${ty.code}`} className="chip justify-center border border-border"
+                  onClick={() => set("errors", [...f.errors, { error_type_id: ty.error_type_id, ayah_ref: ayahRef || (withPassage ? String(f.ayah_from) : null) }])}>
+                  {locale === "ar" ? ty.label_ar : ty.label_en}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {f.errors.length === 0 && <span className="text-xs text-muted-foreground">{t("no_errors")}</span>}
+              {f.errors.map((e, i) => (
+                <ErrorChip key={i} type={types.find((x) => x.error_type_id === e.error_type_id)} ayahRef={e.ayah_ref}
+                  onRemove={() => set("errors", f.errors.filter((_, j) => j !== i))} />
+              ))}
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {f.errors.length === 0 && <span className="text-xs text-muted-foreground">{t("no_errors")}</span>}
-            {f.errors.map((e, i) => (
-              <ErrorChip key={i} type={types.find((x) => x.error_type_id === e.error_type_id)} ayahRef={e.ayah_ref}
-                onRemove={() => set("errors", f.errors.filter((_, j) => j !== i))} />
-            ))}
-          </div>
-        </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <button type="button" className={btnGhost} onClick={onClose}>{t("cancel")}</button>

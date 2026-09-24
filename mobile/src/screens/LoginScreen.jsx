@@ -11,7 +11,7 @@ export default function LoginScreen({ onLogin }) {
   const submit = async () => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      if (data.user.role !== "TEACHER") return Alert.alert(t("error"), "Teacher accounts only");
+      if (data.user.role !== "TEACHER") return Alert.alert(t("error"), t("teacher_accounts_only"));
       await SecureStore.setItemAsync("token", data.token);
       setToken(data.token);
       onLogin();

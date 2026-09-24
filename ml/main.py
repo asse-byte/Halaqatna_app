@@ -26,10 +26,17 @@ class ForecastIn(BaseModel):
     remaining_pages: float | None = Field(default=None, ge=0)
 
 
+_cache: dict = {"mtime": None, "bundle": None}
+
+
 def load_model():
-    if MODEL_PATH.exists():
-        return joblib.load(MODEL_PATH)
-    return None
+    """The trained bundle, or None before /train has run. Re-read only when the file changes."""
+    if not MODEL_PATH.exists():
+        return None
+    mtime = MODEL_PATH.stat().st_mtime
+    if _cache["mtime"] != mtime:
+        _cache["bundle"], _cache["mtime"] = joblib.load(MODEL_PATH), mtime
+    return _cache["bundle"]
 
 
 def predict_pages_per_week(x: ForecastIn) -> tuple[float, str]:
@@ -67,18 +74,27 @@ def forecast(x: ForecastIn):
     }
 
 
+class EvaluateIn(BaseModel):
+    test_share: float = Field(default=0.30, ge=0.1, le=0.5)
+
+
 @app.post("/evaluate")
-def evaluate_endpoint(body: dict | None = None):
+def evaluate_endpoint(body: EvaluateIn | None = None):
     from evaluation import evaluate
     try:
-        return evaluate(float((body or {}).get("test_share", 0.30)))
-    except ValueError as e:
+        return evaluate((body or EvaluateIn()).test_share)
+    except ValueError as e:        # dataset too small — reported as a limitation (§9)
         raise HTTPException(422, str(e))
+    except RuntimeError as e:      # no database configured
+        raise HTTPException(503, str(e))
 
 
 @app.post("/train")
 def train():
-    X, y = build_training_set()
+    try:
+        X, y = build_training_set()
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
     if len(y) < 8:
         raise HTTPException(422, f"Not enough training rows ({len(y)}); need at least 8")
     model = LinearRegression().fit(X, y)

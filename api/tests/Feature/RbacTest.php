@@ -94,7 +94,7 @@ class RbacTest extends TestCase
         $this->as($tok)->getJson("/api/students/{$this->s1->student_id}/sessions")->assertStatus(403);
         $this->as($tok)->getJson("/api/students/{$this->s1->student_id}/report.pdf")->assertStatus(403);
         $this->as($tok)->postJson("/api/students/{$this->s1->student_id}/access-code")->assertStatus(403);
-        $this->as($tok)->postJson('/api/teachers', ['name' => 'T', 'email' => 'tx@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
+        $this->as($tok)->postJson('/api/teachers', ['name' => 'T', 'email' => 'tx@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
         $this->as($tok)->postJson('/api/students', ['name' => 'N', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
     }
 
@@ -156,7 +156,7 @@ class RbacTest extends TestCase
         $this->as($a)->postJson('/api/circles', ['name' => 'X'])->assertStatus(403);
         $this->as($t)->postJson('/api/circles', ['name' => 'X'])->assertStatus(403);
         $this->as($s)->postJson('/api/circles', ['name' => 'X'])->assertStatus(201);
-        $this->as($a)->postJson('/api/circle-admins', ['name' => 'n', 'email' => 'n@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
+        $this->as($a)->postJson('/api/circle-admins', ['name' => 'n', 'email' => 'n@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
         $this->as($a)->getJson('/api/settings')->assertStatus(403);
         $this->as($a)->getJson('/api/audit')->assertStatus(403);
         $this->as($t)->getJson('/api/audit')->assertStatus(403);
@@ -167,8 +167,8 @@ class RbacTest extends TestCase
     public function test_circle_admin_manages_teachers_and_students_only_inside_own_circle(): void
     {
         $a = $this->token('a1@x.sa');
-        $this->as($a)->postJson('/api/teachers', ['name' => 'T', 'email' => 't9@x.sa', 'password' => 'secret1', 'circle_id' => $this->c2->circle_id])->assertStatus(403);
-        $this->as($a)->postJson('/api/teachers', ['name' => 'T', 'email' => 't9@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id])->assertStatus(201);
+        $this->as($a)->postJson('/api/teachers', ['name' => 'T', 'email' => 't9@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c2->circle_id])->assertStatus(403);
+        $this->as($a)->postJson('/api/teachers', ['name' => 'T', 'email' => 't9@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id])->assertStatus(201);
         $this->as($a)->postJson('/api/students', ['name' => 'N', 'circle_id' => $this->c2->circle_id])->assertStatus(403);
         $this->as($a)->postJson('/api/students', ['name' => 'N', 'circle_id' => $this->c1->circle_id, 'teacher_ids' => [$this->t1->user_id]])->assertStatus(201);
         $this->as($a)->patchJson("/api/staff/{$this->admin2->user_id}", ['is_active' => false])->assertStatus(403);
@@ -200,7 +200,7 @@ class RbacTest extends TestCase
         $this->as($tok)->getJson('/api/staff')->assertStatus(403);
         $this->as($tok)->postJson('/api/sessions', ['student_id' => $this->s1->student_id, 'session_date' => '2026-01-05', 'attendance_status' => 'P', 'pages_memorized' => 1])->assertStatus(403);
         $this->as($tok)->postJson("/api/students/{$this->s1->student_id}/access-code")->assertStatus(403);
-        $this->as($tok)->postJson('/api/teachers', ['name' => 'T', 'email' => 'x@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
+        $this->as($tok)->postJson('/api/teachers', ['name' => 'T', 'email' => 'x@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id])->assertStatus(403);
     }
 
     // ---- FR3 ----

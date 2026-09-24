@@ -19,9 +19,9 @@ class StaffUser extends Model
      * MySQL cannot express this as a CHECK, because the role code lives in another table.
      * It is enforced here instead: §6 makes the Eloquent DAL the single path to the database,
      * so every writer — controllers, seeders and tinker alike — passes through this hook.
-     * A System Administrator is deliberately circle-less: `AuthRbacService::requireCircleAccess`
-     * lets that role reach any circle, so a stored `circle_id` would be both meaningless and
-     * misleading about the scope the token actually carries.
+     * A System Administrator is deliberately circle-less: the role administers circles as
+     * objects and `AuthRbacService::requireCircleAccess` refuses it every circle's contents,
+     * so a stored `circle_id` would be both meaningless and misleading.
      */
     protected static function booted(): void
     {

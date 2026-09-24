@@ -25,8 +25,8 @@ class AuthRbacService
     public const CODE_DIGITS = '23456789';
     public const MAX_ATTEMPTS = 5;                 // §5.1 NFR3a
     public const LOCKOUT_SECONDS = 15 * 60;
-    public const STUDENT_HOURLY_MAX = 100;         // §5.1 global secondary limit, per IP
-    public const STUDENT_HOURLY_SECONDS = 3600;
+    public const HOURLY_MAX = 100;                 // §5.1 global secondary limit, per IP
+    public const HOURLY_SECONDS = 3600;
 
     /**
      * §5.1 — identical message and status whether or not the identifier exists.
@@ -45,15 +45,34 @@ class AuthRbacService
         }
     }
 
-    /** Records one failure and fails with the generic message. Writes an audit row when the lockout trips. */
-    private function failAttempt(string $key, int $max, string $scope, array $context): never
+    /**
+     * Records one failure and fails with the generic message.
+     *
+     * Two counters move together: the per-identity one (five tries, then a lockout) and a
+     * per-IP hourly one, which is what stops a caller walking through many emails or many
+     * access codes five at a time. Each writes an audit row when it trips (FR18 / UC8).
+     */
+    private function failAttempt(string $key, string $hourlyKey, string $scope, array $context): never
     {
-        RateLimiter::hit($key, self::LOCKOUT_SECONDS);
-        if (RateLimiter::attempts($key) >= $max) {
-            // FR18 / UC8 — every lockout is visible to a System Administrator.
-            $this->audit->anonymous('CREATE', 'auth_lockout', null, $context + ['scope' => $scope, 'threshold' => $max, 'lockout_seconds' => self::LOCKOUT_SECONDS]);
+        foreach ([[$key, self::MAX_ATTEMPTS, self::LOCKOUT_SECONDS, $scope], [$hourlyKey, self::HOURLY_MAX, self::HOURLY_SECONDS, $scope.'_bulk']] as [$k, $max, $decay, $name]) {
+            RateLimiter::hit($k, $decay);
+            if ((int) RateLimiter::attempts($k) === $max) {
+                $this->audit->anonymous('CREATE', 'auth_lockout', null, $context + ['scope' => $name, 'threshold' => $max, 'lockout_seconds' => $decay]);
+            }
         }
         throw new HttpException(401, self::GENERIC_FAILURE);
+    }
+
+    /**
+     * A bcrypt hash of nothing in particular, checked when the email is unknown so that an
+     * unknown address costs the same bcrypt round as a known one. Without it the response
+     * time alone says whether an email belongs to a staff member (§5.1).
+     */
+    private function dummyHash(): string
+    {
+        static $hash;
+
+        return $hash ??= Hash::make(bin2hex(random_bytes(16)));
     }
 
     // ---------- FR1: staff email + password → JWT ----------
@@ -62,17 +81,31 @@ class AuthRbacService
         $email = strtolower(trim($email));
         // Keyed on email + IP: locking on the email alone would let an attacker lock a real teacher out.
         $key = 'login:staff:'.$ip.':'.$email;
-        $context = ['ip' => $ip, 'email' => $email];
+        $hourlyKey = 'login:staff:hourly:'.$ip;
+        $this->guardAttempts($hourlyKey, self::HOURLY_MAX);
         $this->guardAttempts($key, self::MAX_ATTEMPTS);
 
         $user = StaffUser::with('role')->where('email', $email)->first();
-        // A suspended account fails exactly like an unknown one — a distinct 403 would confirm
-        // both that the email exists and that the password was correct (§5.1).
-        if (!$user || !$user->is_active || !Hash::check($password, $user->password_hash)) {
-            $this->failAttempt($key, self::MAX_ATTEMPTS, 'staff_login', $context);
+        // The hash is always checked, and checked first. A suspended account then fails
+        // exactly like an unknown one — same message, same status, same time — because a
+        // distinct answer would confirm both that the email exists and that the password
+        // was right (§5.1).
+        $passwordOk = Hash::check($password, $user?->password_hash ?? $this->dummyHash());
+        if (!$user || !$passwordOk || !$user->is_active) {
+            $this->failAttempt($key, $hourlyKey, 'staff_login', ['ip' => $ip, 'email' => $email]);
         }
         RateLimiter::clear($key);
-        return ['token' => $this->issue(['typ' => 'staff', 'sub' => $user->user_id, 'role' => $user->roleCode(), 'circle_id' => $user->circle_id]), 'user' => $user->toPublic()];
+
+        return ['token' => $this->staffToken($user), 'user' => $user->toPublic()];
+    }
+
+    /** A fresh token for a staff user — at sign-in, and after they change their own password. */
+    public function staffToken(StaffUser $user): string
+    {
+        return $this->issue([
+            'typ' => 'staff', 'sub' => $user->user_id, 'role' => $user->roleCode(), 'circle_id' => $user->circle_id,
+            'ver' => $this->credentialVersion($user->password_hash),
+        ]);
     }
 
     // ---------- FR2 / UC24: student access code → student token ----------
@@ -82,24 +115,24 @@ class AuthRbacService
         // §5.1 — keyed on IP only, NEVER on the access code. Locking on the code would let anyone
         // who knows a code, or who guesses codes in bulk, permanently deny that student access.
         $key = 'login:student:'.$ip;
-        $bulkKey = 'login:student:hourly:'.$ip;
-        $context = ['ip' => $ip];
-        $this->guardAttempts($bulkKey, self::STUDENT_HOURLY_MAX);
+        $hourlyKey = 'login:student:hourly:'.$ip;
+        $this->guardAttempts($hourlyKey, self::HOURLY_MAX);
         $this->guardAttempts($key, self::MAX_ATTEMPTS);
 
         $student = Student::where('access_code', $code)->first();
         if (!$student || !$student->is_active) {
-            // Secondary limit: blunts bulk code guessing spread across many students.
-            RateLimiter::hit($bulkKey, self::STUDENT_HOURLY_SECONDS);
-            if (RateLimiter::attempts($bulkKey) >= self::STUDENT_HOURLY_MAX) {
-                $this->audit->anonymous('CREATE', 'auth_lockout', null, $context + ['scope' => 'student_login_bulk', 'threshold' => self::STUDENT_HOURLY_MAX, 'lockout_seconds' => self::STUDENT_HOURLY_SECONDS]);
-            }
-            $this->failAttempt($key, self::MAX_ATTEMPTS, 'student_login', $context);
+            $this->failAttempt($key, $hourlyKey, 'student_login', ['ip' => $ip]);
         }
         RateLimiter::clear($key);
         // The circle comes back with the student so the dashboard can name it straight away,
         // instead of showing a bare separator until the next page load refreshes the actor.
-        return ['token' => $this->issue(['typ' => 'student', 'sub' => $student->student_id, 'circle_id' => $student->circle_id]), 'student' => $student->load('circle')];
+        return [
+            'token' => $this->issue([
+                'typ' => 'student', 'sub' => $student->student_id, 'circle_id' => $student->circle_id,
+                'ver' => $this->credentialVersion($student->access_code),
+            ]),
+            'student' => $student->load('circle'),
+        ];
     }
 
     // ---------- FR21: parent progress link — read-only, expiring, revocable ----------
@@ -138,7 +171,7 @@ class AuthRbacService
         return $link;
     }
 
-    /** The teacher who owns the student (or the circle admin / Sys Admin) may revoke a link. */
+    /** The teacher who owns the student, or the circle's supervisor, may revoke a link. */
     public function requireShareLinkControl(array $actor, ProgressShareLink $link): void
     {
         $this->requireStudentManagement($actor, $link->student()->firstOrFail());
@@ -156,7 +189,7 @@ class AuthRbacService
      *
      * The shorter code is a deliberate trade of keyspace for usability, and it is safe only
      * because guessing is bounded elsewhere: MAX_ATTEMPTS failures lock an IP out for
-     * LOCKOUT_SECONDS, and STUDENT_HOURLY_MAX caps an IP at 100 tries an hour, so the
+     * LOCKOUT_SECONDS, and HOURLY_MAX caps an IP at 100 tries an hour, so the
      * ~9.3 million combinations cannot be walked. The code still grants nothing but one
      * student's own read-only dashboard (FR16) and stays revocable on demand (NFR3).
      */
@@ -171,7 +204,10 @@ class AuthRbacService
         return $code;
     }
 
-    /** Issues a fresh code and starts the monthly rotation clock. The old code stops working at once. */
+    /**
+     * Issues a fresh code and starts the monthly rotation clock. The old code stops working
+     * at once, and so does every token signed in with it (see credentialVersion()).
+     */
     public function rotateAccessCode(Student $student): string
     {
         $student->access_code = $this->generateAccessCode();
@@ -182,11 +218,42 @@ class AuthRbacService
     }
 
     // ---------- Token handling ----------
+
+    /**
+     * The HS256 signing key. firebase/php-jwt refuses a key shorter than the hash (32 bytes),
+     * which would surface as an opaque 500 on the first sign-in; say what is wrong instead.
+     */
+    private function secret(): string
+    {
+        $secret = (string) config('halaqtna.jwt.secret');
+        if (strlen($secret) < 32) {
+            throw new \RuntimeException('JWT_SECRET must be set to a random string of at least 32 characters.');
+        }
+
+        return $secret;
+    }
+
+    /**
+     * A short fingerprint of the credential a token was issued against — the password hash
+     * for staff, the access code for a student. It is keyed with the JWT secret, so it
+     * reveals nothing about the credential.
+     *
+     * resolveActor() recomputes it on every request, which is what makes a password change,
+     * a password reset by a supervisor, or an access-code rotation sign out every device
+     * that was using the old credential. Without it a leaked code stayed usable for the
+     * whole token lifetime after the teacher had "revoked" it (NFR3).
+     */
+    private function credentialVersion(string $credential): string
+    {
+        return substr(hash_hmac('sha256', $credential, $this->secret()), 0, 16);
+    }
+
     private function issue(array $claims): string
     {
         $now = time();
-        $payload = $claims + ['iat' => $now, 'exp' => $now + 60 * (int) env('JWT_TTL_MINUTES', 720), 'iss' => 'halaqtna'];
-        return JWT::encode($payload, env('JWT_SECRET'), 'HS256');
+        $payload = $claims + ['iat' => $now, 'exp' => $now + 60 * (int) config('halaqtna.jwt.ttl_minutes', 720), 'iss' => 'halaqtna'];
+
+        return JWT::encode($payload, $this->secret(), 'HS256');
     }
 
     public function resolveActor(Request $request): array
@@ -195,19 +262,29 @@ class AuthRbacService
         if (!str_starts_with($header, 'Bearer ')) {
             throw new HttpException(401, 'Not authenticated');
         }
+        $secret = $this->secret();
         try {
-            $payload = (array) JWT::decode(substr($header, 7), new Key(env('JWT_SECRET'), 'HS256'));
+            $payload = (array) JWT::decode(substr($header, 7), new Key($secret, 'HS256'));
         } catch (\Throwable $e) {
             throw new HttpException(401, 'Invalid or expired token');
         }
-        if (($payload['typ'] ?? '') === 'staff') {
-            $user = StaffUser::with('role')->find($payload['sub']);
-            if (!$user || !$user->is_active) throw new HttpException(401, 'User not found or suspended');
+        $type = $payload['typ'] ?? '';
+        $version = (string) ($payload['ver'] ?? '');
+
+        if ($type === 'staff') {
+            $user = StaffUser::with('role')->find($payload['sub'] ?? null);
+            if (!$user || !$user->is_active || !hash_equals($this->credentialVersion($user->password_hash), $version)) {
+                throw new HttpException(401, 'Session expired — please sign in again');
+            }
+
             return ['type' => 'staff', 'id' => $user->user_id, 'role' => $user->roleCode(), 'circle_id' => $user->circle_id, 'model' => $user];
         }
-        if (($payload['typ'] ?? '') === 'student') {
-            $student = Student::find($payload['sub']);
-            if (!$student || !$student->is_active) throw new HttpException(401, 'Student not found or suspended');
+        if ($type === 'student') {
+            $student = Student::find($payload['sub'] ?? null);
+            if (!$student || !$student->is_active || !hash_equals($this->credentialVersion($student->access_code), $version)) {
+                throw new HttpException(401, 'Session expired — please sign in again');
+            }
+
             return ['type' => 'student', 'id' => $student->student_id, 'role' => 'STUDENT', 'circle_id' => $student->circle_id, 'model' => $student];
         }
         throw new HttpException(401, 'Invalid token type');
@@ -261,19 +338,22 @@ class AuthRbacService
     public function requireStudentAccess(array $actor, Student $student): void
     {
         if ($actor['type'] === 'student') {
-            if ($actor['id'] !== $student->student_id) throw new HttpException(403, 'Students may only access their own data');
+            if ((int) $actor['id'] !== (int) $student->student_id) throw new HttpException(403, 'Students may only access their own data');
             return;
         }
-        $this->requireCircleAccess($actor, (int) $student->circle_id);
-        if ($actor['role'] === 'TEACHER' && !$student->teachers()->where('staff_user.user_id', $actor['id'])->exists()) {
-            throw new HttpException(403, 'This student is not assigned to you');
-        }
+        $this->requireAssignedStaff($actor, $student);
     }
 
     /** Writes on a student (sessions, access code, roster edits): the circle's supervisor, or an assigned teacher. */
     public function requireStudentManagement(array $actor, Student $student): void
     {
         if ($actor['type'] !== 'staff') throw new HttpException(403, 'Staff only');
+        $this->requireAssignedStaff($actor, $student);
+    }
+
+    /** The student's circle, and for a teacher the student must also be one of theirs (§9 RBAC matrix). */
+    private function requireAssignedStaff(array $actor, Student $student): void
+    {
         $this->requireCircleAccess($actor, (int) $student->circle_id);
         if ($actor['role'] === 'TEACHER' && !$student->teachers()->where('staff_user.user_id', $actor['id'])->exists()) {
             throw new HttpException(403, 'This student is not assigned to you');

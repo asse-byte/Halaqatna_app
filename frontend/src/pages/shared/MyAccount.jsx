@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { KeyRound, Save } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import { btnPrimary, Field, inputCls, PageTitle } from "../../components/ui-kit";
 
@@ -18,6 +19,7 @@ import { btnPrimary, Field, inputCls, PageTitle } from "../../components/ui-kit"
  */
 export default function MyAccount() {
   const { t, locale, setLocale } = useT();
+  const { replaceToken, updateActor } = useAuth();
   const [me, setMe] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "", new_password_confirmation: "" });
@@ -32,6 +34,7 @@ export default function MyAccount() {
         name: me.name, email: me.email, phone: me.phone || null, address: me.address || null, locale: me.locale,
       });
       setMe({ ...me, ...data });
+      updateActor({ name: data.name, email: data.email });
       if (data.locale && data.locale !== locale) setLocale(data.locale);
       toast.success(t("profile_saved"));
     } catch (err) { toast.error(errMsg(err)); } finally { setBusy(false); }
@@ -42,7 +45,9 @@ export default function MyAccount() {
     if (pw.new_password !== pw.new_password_confirmation) return toast.error(t("passwords_do_not_match"));
     setBusy(true);
     try {
-      await api.post("/me/password", pw);
+      // Every other device is signed out by the change; this one carries on with the new token.
+      const { data } = await api.post("/me/password", pw);
+      if (data.token) replaceToken(data.token);
       setPw({ current_password: "", new_password: "", new_password_confirmation: "" });
       toast.success(t("password_changed"));
     } catch (err) { toast.error(errMsg(err)); } finally { setBusy(false); }

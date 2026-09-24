@@ -66,18 +66,18 @@ class AdministrationTest extends TestCase
     public function test_sys_admin_creates_a_circle_administrator_who_can_then_sign_in(): void
     {
         $this->as($this->token('sys@x.sa'))->postJson('/api/circle-admins', [
-            'name' => 'Munthir Al-Farsi', 'email' => 'Munthir@Halaqtna.SA', 'password' => 'secret1', 'circle_id' => $this->c2->circle_id,
+            'name' => 'Munthir Al-Farsi', 'email' => 'Munthir@Halaqtna.SA', 'password' => 'Secret2026', 'circle_id' => $this->c2->circle_id,
         ])->assertStatus(201)->assertJsonPath('role', 'CIRCLE_ADMIN');
 
         // The email is normalised to lower case, so sign-in is case-insensitive.
         $this->assertDatabaseHas('staff_user', ['email' => 'munthir@halaqtna.sa']);
-        $this->postJson('/api/auth/login', ['email' => 'munthir@halaqtna.sa', 'password' => 'secret1'])->assertOk();
+        $this->postJson('/api/auth/login', ['email' => 'munthir@halaqtna.sa', 'password' => 'Secret2026'])->assertOk();
     }
 
     public function test_duplicate_email_is_refused(): void
     {
         $this->as($this->token('sys@x.sa'))->postJson('/api/circle-admins', [
-            'name' => 'Clash', 'email' => 't1@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id,
+            'name' => 'Clash', 'email' => 't1@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id,
         ])->assertStatus(422);
     }
 
@@ -123,7 +123,7 @@ class AdministrationTest extends TestCase
     public function test_circle_admin_creates_a_teacher_inside_own_circle(): void
     {
         $body = $this->as($this->token('a1@x.sa'))->postJson('/api/teachers', [
-            'name' => 'New Teacher', 'email' => 'new.teacher@x.sa', 'password' => 'secret1', 'circle_id' => $this->c1->circle_id,
+            'name' => 'New Teacher', 'email' => 'new.teacher@x.sa', 'password' => 'Secret2026', 'circle_id' => $this->c1->circle_id,
         ])->assertStatus(201)->json();
 
         $this->assertSame('TEACHER', $body['role']);

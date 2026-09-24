@@ -155,11 +155,12 @@ final class Surah
         if (!self::exists($sFrom)) {
             return '—';
         }
-        $from = self::name($sFrom, $locale).' '.$aFrom;
-        if ($sTo === $sFrom) {
+        $from = trim(self::name($sFrom, $locale).' '.$aFrom);
+        // No end recorded means the passage ended in the Surah it started in.
+        if ($sTo === null || $sTo === $sFrom) {
             return $aTo && $aTo !== $aFrom ? $from.' – '.$aTo : $from;
         }
 
-        return $from.' – '.self::name($sTo, $locale).' '.$aTo;
+        return $from.' – '.trim(self::name($sTo, $locale).' '.$aTo);
     }
 }

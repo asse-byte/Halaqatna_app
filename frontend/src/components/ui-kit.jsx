@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { bandFor } from "../lib/mastery";
 
 export function PageTitle({ title, subtitle, children }) {
   return (
@@ -42,7 +43,6 @@ export function MetricCard({ label, value, unit, hint, testId, accent, delay = 0
   );
 }
 
-const BAND = (v) => (v == null ? "NO_DATA" : v >= 90 ? "EXCELLENT" : v >= 75 ? "STRONG" : v >= 50 ? "DEVELOPING" : "NEEDS_WORK");
 
 /** The headline figure, with the same word the parent report prints so the two never disagree. */
 export function MasteryGauge({ value, testId = "mastery-score-card" }) {
@@ -57,7 +57,7 @@ export function MasteryGauge({ value, testId = "mastery-score-card" }) {
       <div>
         <div className="eyebrow">{t("mastery")}</div>
         <div className="metric-number">{value ?? "—"}<span className="text-base text-muted-foreground">/100</span></div>
-        <div className="mt-1 text-sm font-semibold text-secondary" data-testid="mastery-band">{t(`band_${BAND(value)}`)}</div>
+        <div className="mt-1 text-sm font-semibold text-secondary" data-testid="mastery-band">{t(`band_${bandFor(value)}`)}</div>
         <div className="mt-1 max-w-[16rem] text-xs leading-relaxed text-muted-foreground">{t("mastery_hint")}</div>
       </div>
     </div>
@@ -177,10 +177,18 @@ export function Table({ head, children, testId, empty }) {
 }
 
 export function Modal({ open, onClose, title, subtitle, children, wide }) {
+  // Escape closes the dialog, as it does everywhere else on the web.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className={`glass my-auto w-full ${wide ? "max-w-xl" : "max-w-md"} rounded-2xl p-5 animate-rise`} onClick={(e) => e.stopPropagation()} data-testid="modal">
+      <div role="dialog" aria-modal="true" aria-label={title} className={`glass my-auto w-full ${wide ? "max-w-xl" : "max-w-md"} rounded-2xl p-5 animate-rise`} onClick={(e) => e.stopPropagation()} data-testid="modal">
         <h3 className="text-lg font-bold">{title}</h3>
         {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
         <div className="mt-4">{children}</div>
@@ -194,7 +202,7 @@ export function ConfirmDialog({ open, title, message, onCancel, onConfirm, confi
   const { t } = useT();
   return (
     <Modal open={open} onClose={onCancel} title={title}>
-      <p className="text-sm leading-relaxed text-muted-foreground" data-testid="confirm-message">{message}</p>
+      <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground" data-testid="confirm-message">{message}</p>
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" className={btnGhost} onClick={onCancel} data-testid="confirm-cancel">{t("cancel")}</button>
         <button type="button" className={btnDanger} onClick={onConfirm} data-testid="confirm-ok">{confirmLabel || t("delete")}</button>

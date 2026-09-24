@@ -5,10 +5,9 @@ import { CloudOff, Save } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { btnGhost, btnPrimary, ErrorChip, Field, inputCls, PageTitle } from "../../components/ui-kit";
-import { flushQueue, queueSession, readQueue } from "../../lib/offline";
+import { flushQueue, newClientId, queueSession, readQueue } from "../../lib/offline";
+import { localToday } from "../../lib/dates";
 import { ayahCount, surahName, SURAH_NUMBERS } from "../../lib/surahs";
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * Recording a recitation (FR5, FR6).
@@ -33,7 +32,7 @@ export default function LogSession() {
   const [pending, setPending] = useState(readQueue().length);
   const [sameSurah, setSameSurah] = useState(true);
   const [f, setF] = useState({
-    student_id: params.get("student") || "", session_date: today(), attendance_status: "P", session_type: "NEW",
+    student_id: params.get("student") || "", session_date: localToday(), attendance_status: "P", session_type: "NEW",
     surah_from: 1, ayah_from: 1, surah_to: 1, ayah_to: 7, pages_memorized: 1, errors: [],
   });
   const [ayahRef, setAyahRef] = useState("");
@@ -47,7 +46,9 @@ export default function LogSession() {
     }).catch((err) => toast.error(errMsg(err)));
   }, []);
   useEffect(() => {
-    const sync = () => flushQueue(api).then((n) => { setPending(readQueue().length); if (n) toast.success(`${t("synced")}: ${n}`); });
+    const sync = () => flushQueue(api)
+      .then((n) => { if (n) toast.success(`${t("synced")}: ${n}`); })
+      .finally(() => setPending(readQueue().length));
     window.addEventListener("online", sync); sync();
     return () => window.removeEventListener("online", sync);
   }, []);
@@ -73,7 +74,7 @@ export default function LogSession() {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const body = { ...f, student_id: Number(f.student_id), surah_to: sameSurah ? f.surah_from : f.surah_to, client_uuid: crypto.randomUUID() };
+    const body = { ...f, student_id: Number(f.student_id), surah_to: sameSurah ? f.surah_from : f.surah_to, client_uuid: newClientId() };
     try {
       const { data } = await api.post("/sessions", body);
       toast.success(t("session_saved"));
@@ -91,7 +92,7 @@ export default function LogSession() {
       {pending > 0 && (
         <div className="glass mb-4 flex items-center justify-between rounded-xl px-3 py-2 text-sm" data-testid="pending-sync-banner">
           <span className="flex items-center gap-2"><CloudOff size={14} />{pending} {t("pending_sync")}</span>
-          <button className={btnGhost} data-testid="sync-now-button" onClick={() => flushQueue(api).then(() => setPending(readQueue().length))}>{t("sync_now")}</button>
+          <button className={btnGhost} data-testid="sync-now-button" onClick={() => flushQueue(api).finally(() => setPending(readQueue().length))}>{t("sync_now")}</button>
         </div>
       )}
 
@@ -102,7 +103,7 @@ export default function LogSession() {
           </select>
         </Field>
         <Field label={t("session_date")}>
-          <input data-testid="session-date-input" className={inputCls} type="date" max={today()} value={f.session_date} onChange={(e) => set("session_date", e.target.value)} required />
+          <input data-testid="session-date-input" className={inputCls} type="date" max={localToday()} value={f.session_date} onChange={(e) => set("session_date", e.target.value)} required />
         </Field>
 
         <div>

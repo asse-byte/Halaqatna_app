@@ -4,8 +4,7 @@ import { CheckCheck, Save } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { ATT_STYLES, btnGhost, btnPrimary, Field, inputCls, PageTitle } from "../../components/ui-kit";
-
-const today = () => new Date().toISOString().slice(0, 10);
+import { localToday } from "../../lib/dates";
 
 /**
  * Taking the register (FR4), on its own page.
@@ -21,7 +20,7 @@ const STATUSES = ["P", "A", "E"];
 
 export default function Attendance() {
   const { t } = useT();
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(localToday());
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -54,7 +53,7 @@ export default function Attendance() {
       <div className="glass mb-4 flex flex-wrap items-end gap-3 rounded-2xl p-4">
         <div className="flex-1 min-w-[12rem]">
           <Field label={t("session_date")}>
-            <input data-testid="attendance-date" className={inputCls} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+            <input data-testid="attendance-date" className={inputCls} type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
         <button type="button" className={btnGhost} data-testid="mark-all-present" onClick={markAllPresent} disabled={!rows?.length}>

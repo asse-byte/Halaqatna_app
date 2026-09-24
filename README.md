@@ -21,7 +21,7 @@ CPIT-499 · King Abdulaziz University · Faculty of Computing and Information Te
 | `/frontend` | Student dashboard + administration console + responsive teacher flow (the `/web` client of the Week-0 plan) | React + Vite · Tailwind CSS |
 | `/mobile` | Teacher client (UC9–UC12, offline queue) | React Native · Expo |
 | `/docker` | `nginx`, `api`, `ml`, `db` + the named volume `storage` | Docker Compose |
-| `/scripts` | `db_setup.sh`, `db_grants.sql`, `check_locales.js` (NFR6 CI), `check_offline_queue.mjs` | |
+| `/scripts` | `dev_up.sh`, `db_setup.sh`, `docker_setup.sh`, `db_grants.sql`, `make_dev_certs.sh`, `check_locales.js` (NFR6 CI), `check_offline_queue.mjs` | |
 | `/docs` | `CPIT-499-report-changes.md` — every change the report must carry (§11, §12) | |
 
 **Network rule (§1).** The only connection crossing into the server is `client → nginx` over
@@ -49,22 +49,21 @@ and shows the last stored forecast with a staleness notice. Everything else runs
 
 ### Production — Docker Compose
 
-nginx listens on 443 only (NFR4), so it will not start without a certificate. Generate a
-self-signed one for local use, build the web client, then bring the stack up:
+nginx listens on 443 only (NFR4), so it will not start without a certificate. Edit
+`api/.env.docker` and `docker/mysql/init.sql` first — both ship with placeholder secrets —
+then generate a self-signed certificate, build the web client, and run the setup script:
 
 ```bash
 bash scripts/make_dev_certs.sh        # writes docker/nginx/certs/ — development only
 cd frontend && npm install && npm run build && cd ..
-cd docker && DB_ROOT_PASSWORD=... ML_DB_PASSWORD=... docker compose up --build
+DB_ROOT_PASSWORD=... DB_ADMIN_PASSWORD=... ML_DB_PASSWORD=... bash scripts/docker_setup.sh
 ```
 
-Edit `api/.env.docker` and `docker/mysql/init.sql` first: both ship with placeholder secrets.
-Then create the schema and apply the least-privilege grants:
-
-```bash
-DB_HOST=db GRANT_HOST='%' DB_ADMIN_PASSWORD=... API_DB_PASSWORD=... ML_DB_PASSWORD=... \
-  bash scripts/db_setup.sh
-```
+`docker_setup.sh` starts MySQL, runs the migrations as `halaqtna_admin` in a one-off `api`
+container, applies the least-privilege grants, seeds, verifies that `audit_log` and
+`xp_ledger` are still append-only, and brings the whole stack up. It is safe to run again;
+only `FRESH=1` drops data. (The `api` container itself never migrates: it connects as
+`halaqtna_api`, which by design cannot alter the schema.)
 
 Open `https://localhost`. The browser will warn that the certificate is not trusted — that is
 what self-signed means, and it is expected. Replace the two files in `docker/nginx/certs/`
@@ -78,7 +77,7 @@ cd api && composer install
 cp .env.example .env && php artisan key:generate     # then set JWT_SECRET, DB_PASSWORD, SYS_ADMIN_*
 php artisan serve --host=127.0.0.1 --port=8000
 
-# 2. Database — migrate as admin, apply grants, seed
+# 2. Database — migrate as admin, apply grants, seed (FRESH=1 to start from empty)
 DB_ADMIN_PASSWORD=... API_DB_PASSWORD=... ML_DB_PASSWORD=... bash scripts/db_setup.sh
 
 # 3. ML prediction service (never published; the API reaches it over internal HTTP)
@@ -99,14 +98,20 @@ SDK 52 versions — change them with `npx expo install`, never by hand, or the b
 ### Tests
 
 ```bash
-cd api && php artisan test                   # 120 feature + unit tests, 799 assertions
+cd api && php artisan test                   # 140 feature + unit tests, 930 assertions
 cd api && php artisan test --coverage --min=70   # NFR9 — needs pcov or Xdebug
-node scripts/check_locales.js                # NFR6: ar/en key parity
+cd frontend && npm run lint                  # ESLint over the web client
+node scripts/check_locales.js                # NFR6: ar/en key parity, and every key the clients use exists
 node --test scripts/check_offline_queue.mjs  # UC10 alternative flow 5a
 ```
 
-**NFR9 is met — measured, not asserted:** **92.78% lines (578/623)** with pcov 1.0.12 on
-PHP 8.3.33, and every backend module is at or above the 70% threshold. The per-module table is in
+The API suite needs an `api/.env` to exist (`cp .env.example .env`); `phpunit.xml` overrides
+everything the tests depend on.
+
+**NFR9 was met — measured, not asserted:** **92.78% lines (578/623)** with pcov 1.0.12 on
+PHP 8.3.33, and every backend module was at or above the 70% threshold. That measurement
+predates the third review round (docs §10), which added tests alongside every fix; re-run the
+coverage command above to refresh the figure before quoting it. The per-module table is in
 [docs/CPIT-499-report-changes.md](docs/CPIT-499-report-changes.md) §7. `--coverage` needs a
 coverage driver installed (`pecl install pcov`, or the matching Windows DLL); without one it
 silently reports nothing.
@@ -155,7 +160,7 @@ POST   /api/students/{id}/access-code  FR3    rotate (teacher / circle superviso
 
 GET    /api/me/profile                 FR22   staff self-service: own details
 PATCH  /api/me/profile                 FR22   audited (FR18); role, circle and status are not editable here
-POST   /api/me/password                FR22   requires the current password
+POST   /api/me/password                FR22   requires the current password; signs out other devices and returns a fresh token
 
 GET    /api/circles                    FR19   deployment administration
 POST   /api/circles                    FR19
@@ -182,7 +187,7 @@ GET    /api/circles/{id}/report        FR14
 GET    /api/students/{id}/report.pdf   FR15
 GET    /api/audit                      FR18   (System Administrator only)
 
-POST   /api/students/{id}/share-link   FR21   create (teacher / supervisor) → {link_id, url, report_url, guardian_phone, expires_at}
+POST   /api/students/{id}/share-link   FR21   create (teacher / supervisor), optional days 1–30 → {link_id, url, report_url, guardian_phone, expires_at}
 DELETE /api/share-links/{link_id}      FR21   revoke
 GET    /p/{token}                      FR21   public read-only card; no auth; 404 if unknown/expired/revoked
 GET    /p/{token}/report.pdf           FR15   the full report for the guardian, behind the same token
@@ -221,6 +226,9 @@ See **[docs/CPIT-499-report-changes.md](docs/CPIT-499-report-changes.md)** — t
 changes (including `session_type`, which changes Figure 4.7), the provisional constants, the
 FR21 scope change of §12 with the recorded I5 decision, the §5.1 rate-limiting rationale, and
 the NFR10 evaluation protocol.
+
+For the third review round — a full audit of the code that fixed credential revocation, the
+rate limiter behind nginx, the MySQL grants, XP consistency and the offline queue — see §10.
 
 For the second review round — the System Administrator / Circle Supervisor boundary, the plain
 -language vocabulary, the Arabic PDF fix, the register, the short access codes and the guardian's

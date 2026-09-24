@@ -10,7 +10,11 @@ export default function StudentsScreen({ navigation, onLogout }) {
   const [rows, setRows] = useState([]);
   const load = () => api.get("/students").then((r) => setRows(r.data)).catch((e) => Alert.alert(t("error"), errMsg(e)));
   useFocusEffect(useCallback(() => { load(); }, []));
-  const regen = (st) => api.post(`/students/${st.student_id}/access-code`).then(load).catch((e) => Alert.alert(t("error"), errMsg(e)));
+  // A new code signs the student out everywhere, so it is never one stray tap away.
+  const regen = (st) => Alert.alert(t("regenerate_code"), `${t("confirm_rotate_code")}\n\n${st.name}`, [
+    { text: t("cancel"), style: "cancel" },
+    { text: t("rotate_code"), style: "destructive", onPress: () => api.post(`/students/${st.student_id}/access-code`).then(load).catch((e) => Alert.alert(t("error"), errMsg(e))) },
+  ]);
   const logout = async () => { await SecureStore.deleteItemAsync("token"); setToken(null); onLogout(); };
   return (
     <View style={s.wrap}>

@@ -93,7 +93,7 @@ export default function CircleAdmins() {
               </Field>
               <Field label={t("password")} hint={form.user_id ? t("password_optional_hint") : undefined}>
                 <input data-testid="ca-password-input" className={inputCls} type="text" dir="ltr" value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })} required={!form.user_id} minLength={form.password ? 6 : undefined} />
+                  onChange={(e) => setForm({ ...form, password: e.target.value })} required={!form.user_id} minLength={form.password ? 8 : undefined} />
               </Field>
             </div>
             <Field label={t("address")}>

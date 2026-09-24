@@ -136,13 +136,13 @@ class RateLimitTest extends TestCase
     /** §5.1 — a global secondary limit per IP blunts bulk code guessing across many students. */
     public function test_student_login_has_a_global_hourly_limit_per_ip(): void
     {
-        $this->assertSame(100, AuthRbacService::STUDENT_HOURLY_MAX);
+        $this->assertSame(100, AuthRbacService::HOURLY_MAX);
         $ip = '203.0.113.50';
         // Drive the hourly counter to its ceiling directly; the per-15-minute limit would
         // otherwise stop the test long before 100 requests are made.
         RateLimiter::clear('login:student:hourly:'.$ip);
-        for ($i = 0; $i < AuthRbacService::STUDENT_HOURLY_MAX; $i++) {
-            RateLimiter::hit('login:student:hourly:'.$ip, AuthRbacService::STUDENT_HOURLY_SECONDS);
+        for ($i = 0; $i < AuthRbacService::HOURLY_MAX; $i++) {
+            RateLimiter::hit('login:student:hourly:'.$ip, AuthRbacService::HOURLY_SECONDS);
         }
         // Even a VALID code is refused from that address once the hourly ceiling is reached.
         $this->studentAttempt('AAAA1111', $ip)->assertStatus(429);
