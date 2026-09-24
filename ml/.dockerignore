@@ -1,0 +1,7 @@
+# A trained model and past reports belong to the running service, not to the image.
+model.joblib
+reports/*.json
+__pycache__/
+*.py[cod]
+.venv/
+venv/

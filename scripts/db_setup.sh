@@ -8,12 +8,18 @@
 #
 # Usage:
 #   bash scripts/db_setup.sh                     # local MySQL on 127.0.0.1:3306
-#   DB_HOST=db GRANT_HOST='%' bash scripts/db_setup.sh    # inside Docker Compose
+#   FRESH=1 bash scripts/db_setup.sh             # drop every table first (demo reset)
+#
+# Under Docker Compose use scripts/docker_setup.sh instead: the `db` service publishes no
+# port, so this script cannot reach it from the host.
+#
+# Safe to run again: migrations only apply what is missing and the seeder adds reference
+# data and the demo circles once. Only FRESH=1 drops data.
 #
 # Override any of these:
 #   DB_HOST DB_PORT DB_NAME GRANT_HOST
 #   DB_ADMIN_USER DB_ADMIN_PASSWORD DB_ROOT_USER DB_ROOT_PASSWORD
-#   API_DB_PASSWORD ML_DB_PASSWORD MYSQL_CLIENT
+#   API_DB_PASSWORD ML_DB_PASSWORD MYSQL_CLIENT FRESH
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,14 +53,19 @@ CREATE USER IF NOT EXISTS 'halaqtna_ml'@'${GRANT_HOST}' IDENTIFIED BY '${ML_DB_P
 FLUSH PRIVILEGES;
 SQL
 
-echo "==> migrating as ${DB_ADMIN_USER} (§2 dependency order)"
+# migrate:fresh drops every table, so it is opt-in: run by accident against a live
+# database it would erase every student's history.
+MIGRATE="migrate"
+[ "${FRESH:-0}" = "1" ] && MIGRATE="migrate:fresh"
+
+echo "==> ${MIGRATE} as ${DB_ADMIN_USER} (§2 dependency order)"
 cd "$REPO_ROOT/api"
 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_DATABASE="$DB_NAME" \
   DB_USERNAME="$DB_ADMIN_USER" DB_PASSWORD="$DB_ADMIN_PASSWORD" \
-  php artisan migrate:fresh --force
+  php artisan "$MIGRATE" --force
 
 echo "==> applying least-privilege grants (rule 4: audit_log and xp_ledger stay append-only)"
-sed "s/__HOST__/${GRANT_HOST}/g" "$REPO_ROOT/scripts/db_grants.sql" | root_sql "$DB_NAME"
+sed -e "s/__HOST__/${GRANT_HOST}/g" -e "s/ ON halaqtna\./ ON ${DB_NAME}./g" "$REPO_ROOT/scripts/db_grants.sql" | root_sql "$DB_NAME"
 
 echo "==> seeding reference data and demo circles"
 DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_DATABASE="$DB_NAME" \

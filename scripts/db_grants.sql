@@ -7,8 +7,11 @@
 -- __HOST__ is substituted by scripts/db_setup.sh before this file reaches the server:
 --   local (host MySQL on the loopback) -> 127.0.0.1
 --   Docker Compose (api and ml are other containers) -> %
--- Run it through the script rather than by hand, or the grants land on a user that does
--- not exist and the append-only guarantee is silently not applied.
+-- The database name `halaqtna` is replaced by DB_NAME the same way. Run it through the script
+-- rather than by hand, or the grants land on a user that does not exist and the append-only
+-- guarantee is silently not applied.
+--
+-- Every table the migrations create must appear below; DataIntegrityTest checks that it does.
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON halaqtna.role TO 'halaqtna_api'@'__HOST__';
 GRANT SELECT, INSERT, UPDATE, DELETE ON halaqtna.circle TO 'halaqtna_api'@'__HOST__';
@@ -30,6 +33,10 @@ GRANT SELECT, INSERT ON halaqtna.audit_log TO 'halaqtna_api'@'__HOST__';
 -- progress_share_link: UPDATE is needed for revoked_at, view_count and last_viewed_at (§2.13).
 GRANT SELECT, INSERT, UPDATE ON halaqtna.progress_share_link TO 'halaqtna_api'@'__HOST__';
 GRANT SELECT, INSERT, UPDATE, DELETE ON halaqtna.system_setting TO 'halaqtna_api'@'__HOST__';
+-- NFR3a: the login rate limiter is cache-backed (CACHE_STORE=database). Without these two the
+-- first sign-in attempt fails with "SELECT command denied" — FR1 and FR2 dead on MySQL.
+GRANT SELECT, INSERT, UPDATE, DELETE ON halaqtna.cache TO 'halaqtna_api'@'__HOST__';
+GRANT SELECT, INSERT, UPDATE, DELETE ON halaqtna.cache_locks TO 'halaqtna_api'@'__HOST__';
 GRANT SELECT ON halaqtna.migrations TO 'halaqtna_api'@'__HOST__';
 
 -- ML Prediction Service (FR10): read-only. It trains from the database and returns a

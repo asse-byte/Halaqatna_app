@@ -6,5 +6,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www
 COPY . .
 RUN composer install --no-dev --optimize-autoloader --no-interaction
+# `php artisan serve` handles one request at a time unless told otherwise; a PDF export
+# would otherwise hold up every other teacher's request while it renders.
+ENV PHP_CLI_SERVER_WORKERS=4
 EXPOSE 8000
-CMD ["sh", "-c", "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000"]
+# No `migrate` here. This container connects as halaqtna_api, which by design cannot alter
+# the schema (rule 4); migrations run as halaqtna_admin through scripts/docker_setup.sh.
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
