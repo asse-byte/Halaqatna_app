@@ -233,6 +233,13 @@ through `AuthRbacService` from the controller that needs it, because most checks
 resource (*this* circle, *this* student) and a route alias cannot express that. Rule 5 is
 unaffected — the decisions were never in the middleware.
 
+Three decisions had stayed in controllers all the same: which staff account each administrator
+may manage (`StaffController`), and the System Administrator's reach to a circle as a record
+(`CircleController::show`, and placing staff in a circle). They now live in the service as
+`requireStaffManagement` and `requireCircleRecordAccess`, with the same messages and status
+codes. `RbacTest::test_every_403_is_decided_by_the_auth_rbac_service` fails if a 403 is raised
+anywhere else in `app/`.
+
 ---
 
 ## 8. Two defects the test suite could not have found

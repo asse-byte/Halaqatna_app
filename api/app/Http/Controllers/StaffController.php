@@ -79,7 +79,7 @@ class StaffController extends Controller
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
         $u = StaffUser::with('role')->findOrFail($id);
-        $this->requireManagementOf($a, $u);
+        $this->rbac->requireStaffManagement($a, $u);
 
         $this->lowercaseEmail($r);
         $d = $r->validate(self::PROFILE_RULES + [
@@ -89,7 +89,7 @@ class StaffController extends Controller
             'password' => 'sometimes|'.self::PASSWORD_RULE,
             'circle_id' => 'sometimes|integer|exists:circle,circle_id',
         ]);
-        if (isset($d['circle_id']) && $a['role'] !== 'SYS_ADMIN') $this->rbac->requireCircleAccess($a, (int) $d['circle_id']);
+        if (isset($d['circle_id'])) $this->rbac->requireCircleRecordAccess($a, (int) $d['circle_id']);
         $passwordReset = isset($d['password']);
         if ($passwordReset) {
             // A reset also signs the account out everywhere: its tokens carry the old hash's fingerprint.
@@ -114,7 +114,7 @@ class StaffController extends Controller
         $a = $this->actor($r);
         $this->rbac->requireRole($a, ['SYS_ADMIN', 'CIRCLE_ADMIN']);
         $u = StaffUser::with('role')->findOrFail($id);
-        $this->requireManagementOf($a, $u);
+        $this->rbac->requireStaffManagement($a, $u);
         $hasHistory = RecitationSession::where('user_id', $u->user_id)->exists()
             || ProgressShareLink::where('created_by_user_id', $u->user_id)->exists()
             || AuditLog::where('actor_user_id', $u->user_id)->exists();
@@ -126,17 +126,5 @@ class StaffController extends Controller
         $this->audit->log($a, 'DELETE', 'staff_user', $id, ['name' => $name, 'role' => $u->roleCode()]);
 
         return response()->json(['deleted' => true]);
-    }
-
-    private function requireManagementOf(array $actor, StaffUser $target): void
-    {
-        abort_if($target->roleCode() === 'SYS_ADMIN', 403, 'System administrators cannot be modified here');
-        if ($actor['role'] === 'SYS_ADMIN') {
-            abort_if($target->roleCode() !== 'CIRCLE_ADMIN', 403, 'A System Administrator manages circle supervisors only');
-
-            return;
-        }
-        abort_if($target->roleCode() !== 'TEACHER', 403, 'A Circle Supervisor manages teachers only');
-        $this->rbac->requireCircleAccess($actor, (int) $target->circle_id);
     }
 }

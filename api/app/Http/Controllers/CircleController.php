@@ -63,7 +63,7 @@ class CircleController extends Controller
         $a = $this->actor($r);
         // The circle as an administrative object (FR19) is the System Administrator's
         // business; its contents are not. Circle staff reach it through their own scope.
-        if ($a['role'] !== 'SYS_ADMIN') $this->rbac->requireCircleAccess($a, $id);
+        $this->rbac->requireCircleRecordAccess($a, $id);
         return response()->json(Circle::withCount(['students', 'staff'])->findOrFail($id));
     }
 

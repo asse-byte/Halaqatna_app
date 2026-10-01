@@ -100,7 +100,7 @@ SDK 52 versions — change them with `npx expo install`, never by hand, or the b
 ### Tests
 
 ```bash
-cd api && php artisan test                   # 142 feature + unit tests, 946 assertions
+cd api && php artisan test                   # 145 feature + unit tests, 966 assertions
 cd api && php artisan test --coverage --min=70   # NFR9 — needs pcov or Xdebug
 cd frontend && npm run lint                  # ESLint over the web client
 node scripts/check_locales.js                # NFR6: ar/en key parity, and every key the clients use exists
@@ -146,7 +146,7 @@ ten students with roughly six weeks of synthetic sessions.
 | 2 | Two auth paths; `Student` is **not** a subclass of `User` | `AuthRbacService::staffLogin` (bcrypt + JWT) and `studentLogin` (access code). `student` has no email and no `password_hash` |
 | 3 | Derived values are never stored | computed on read in `AnalyticsEngine`; total XP is `SUM(xp_ledger.points)` |
 | 4 | `audit_log` and `xp_ledger` are append-only | `scripts/db_grants.sql` grants the API user SELECT + INSERT only; `db_setup.sh` verifies it and fails if UPDATE or DELETE is present |
-| 5 | One component makes every authorization decision | `app/Services/AuthRbacService.php`; middleware and controllers only call it. Per Table 1.1 the System Administrator's remit (circles, supervisors, settings, audit) and the Circle Supervisor's (teachers, students, sessions, reports) are **disjoint**: `requireCircleAccess` refuses `SYS_ADMIN` outright |
+| 5 | One component makes every authorization decision | `app/Services/AuthRbacService.php`; middleware and controllers only call it, and `RbacTest` fails if a 403 is raised anywhere else. Per Table 1.1 the System Administrator's remit (circles, supervisors, settings, audit) and the Circle Supervisor's (teachers, students, sessions, reports) are **disjoint**: `requireCircleAccess` refuses `SYS_ADMIN` outright |
 | 6 | The ML service is a separate container, internal HTTP only | `MlClient`, with the UC13 fallback on timeout; `ml` declares no `ports:` |
 | 7 | Schema stays in 3NF | the error weight lives once, in `error_type`; `session_error` has no weight column |
 | 8 | All numeric constants are provisional | stored in `system_setting` (UC3), calibrated in P10, never presented as results |
