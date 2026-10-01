@@ -35,10 +35,12 @@ bridge and are never published. Only the `nginx` service declares `ports:`.
 ### Just show me the system — one command
 
 ```bash
-bash scripts/dev_up.sh          # then open http://localhost:3000
+bash scripts/dev_up.sh          # then open http://127.0.0.1:3000
 ```
 
-Needs only **PHP 8.2+, Composer and Node 18+**. It installs what is missing, writes
+Needs only **PHP 8.2+, Composer and Node 20.19+ (or 22.12+)**. On Windows, run it from Git
+Bash. It checks all three, and the PHP extensions, before installing anything, and says what
+to install if one is missing. It installs what is missing, writes
 `api/.env` for you, creates a SQLite database, seeds the demo circles, and starts both
 servers. Ctrl-C stops them. The sign-in details are printed on screen.
 
