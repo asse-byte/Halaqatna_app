@@ -326,6 +326,14 @@ English leaking into the Arabic interface.
    the public card to minimum data. The full report is what FR15 already authorises the
    teacher to hand a parent; the link is the delivery. All §2.13 controls are kept: expiry,
    revocation, flat 404 for unknown or retired tokens, and an audit row per download.
+   **WhatsApp is the only way a report reaches a guardian.** The separate "share with the
+   guardian" panel — which showed the same link for copying, opening and revoking — was
+   removed: two buttons doing one job confused teachers, and the link is a delivery mechanism
+   under the message, not something to manage by hand. Revocation stays reachable without a
+   revoke button because every send issues a fresh link, and issuing one retires the previous
+   one (one live link per student): a report sent to a wrong number dies the moment the
+   teacher corrects the number and sends again. The guardian number is checked *before* a
+   link is issued, so a send that could never go out does not retire a link still in use.
 3. **Access code length: 8 → 6** (three letters, three digits). NFR3's requirements —
    single-purpose, revocable — both hold, and the report states no length. The trade must be
    stated explicitly: ~9.3 million combinations, held by the NFR3a throttles (five failures
