@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
@@ -175,6 +176,67 @@ class RbacTest extends TestCase
         $this->as($a)->patchJson("/api/staff/{$this->t1->user_id}", ['is_active' => false])->assertOk();
         $this->as($a)->patchJson("/api/students/{$this->s3->student_id}", ['is_active' => false])->assertStatus(403);
         $this->as($a)->patchJson("/api/students/{$this->s1->student_id}", ['is_active' => false])->assertOk();
+    }
+
+    /**
+     * FR19 / FR20, Table 1.1 — each administrator manages exactly one kind of staff account:
+     * the System Administrator the Circle Supervisors, a Supervisor the teachers of their own
+     * circle. Every branch of AuthRbacService::requireStaffManagement is pinned here.
+     */
+    public function test_staff_accounts_are_managed_only_by_the_matching_administrator(): void
+    {
+        $sys = $this->token('sys@x.sa');
+        $a1 = $this->token('a1@x.sa');
+
+        // No System Administrator is managed through the API, not even by another one.
+        $this->as($sys)->patchJson("/api/staff/{$this->sys->user_id}", ['name' => 'Renamed'])->assertStatus(403);
+        // The System Administrator: supervisors yes, teachers no.
+        $this->as($sys)->patchJson("/api/staff/{$this->t1->user_id}", ['is_active' => false])->assertStatus(403);
+        $this->as($sys)->patchJson("/api/staff/{$this->admin2->user_id}", ['is_active' => false])->assertOk();
+        // A Supervisor: teachers of their own circle, never another supervisor.
+        $this->as($a1)->deleteJson("/api/staff/{$this->admin2->user_id}")->assertStatus(403);
+        $this->as($a1)->patchJson("/api/staff/{$this->t2->user_id}", ['name' => 'T Two'])->assertOk();
+
+        $this->assertFalse((bool) $this->admin2->fresh()->is_active);
+        $this->assertTrue((bool) $this->t1->fresh()->is_active);
+    }
+
+    /**
+     * The circle as a record: the System Administrator reaches every one (FR19 — they place
+     * supervisors in circles); circle staff only their own, for reading or for placing staff.
+     */
+    public function test_a_circle_record_is_open_to_its_own_staff_and_to_the_system_administrator(): void
+    {
+        $sys = $this->token('sys@x.sa');
+        $a1 = $this->token('a1@x.sa');
+        $t1 = $this->token('t1@x.sa');
+
+        $this->as($t1)->getJson("/api/circles/{$this->c1->circle_id}")->assertOk();
+        $this->as($t1)->getJson("/api/circles/{$this->c2->circle_id}")->assertStatus(403);
+        $this->as($sys)->getJson("/api/circles/{$this->c1->circle_id}")->assertOk();
+
+        // Placing staff: a supervisor cannot move a teacher out to another circle…
+        $this->as($a1)->patchJson("/api/staff/{$this->t1->user_id}", ['circle_id' => $this->c2->circle_id])->assertStatus(403);
+        $this->assertSame($this->c1->circle_id, $this->t1->fresh()->circle_id);
+        // …while the System Administrator assigns a supervisor to any circle.
+        $this->as($sys)->patchJson("/api/staff/{$this->admin1->user_id}", ['circle_id' => $this->c2->circle_id])->assertOk();
+        $this->assertSame($this->c2->circle_id, $this->admin1->fresh()->circle_id);
+    }
+
+    /**
+     * Rule 5 — one component makes every authorization decision. A 403 raised anywhere but
+     * AuthRbacService is a second place deciding who may do what, which is exactly what the
+     * rule rules out; controllers ask the service and never answer the question themselves.
+     */
+    public function test_every_403_is_decided_by_the_auth_rbac_service(): void
+    {
+        $offenders = collect(File::allFiles(app_path()))
+            ->reject(fn ($f) => $f->getFilename() === 'AuthRbacService.php')
+            ->filter(fn ($f) => preg_match('/abort(?:_if|_unless)?\([^;]*\b403\b|HttpException\(\s*403\b/', $f->getContents()))
+            ->map(fn ($f) => $f->getRelativePathname())
+            ->values()->all();
+
+        $this->assertSame([], $offenders, 'Authorization decided outside AuthRbacService');
     }
 
     public function test_teacher_cannot_suspend_or_reassign_students(): void

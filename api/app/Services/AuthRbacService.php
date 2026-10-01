@@ -332,6 +332,38 @@ class AuthRbacService
     }
 
     /**
+     * The circle as a record rather than its contents: reading its name and head-counts
+     * (FR19), or placing a staff member in it (FR19 / FR20). Creating and staffing circles is
+     * the System Administrator's remit, so that role reaches every circle here; anyone else
+     * only their own. The contents — roster, sessions, metrics — stay behind
+     * requireCircleAccess, which refuses the System Administrator.
+     */
+    public function requireCircleRecordAccess(array $actor, int $circleId): void
+    {
+        if ($actor['role'] === 'SYS_ADMIN') return;
+        $this->requireCircleAccess($actor, $circleId);
+    }
+
+    /**
+     * FR19 / FR20 — who may edit, suspend, reset or remove a staff account. Table 1.1 keeps
+     * the two administrative remits disjoint: the System Administrator manages the Circle
+     * Supervisors and no one else, and a Circle Supervisor manages the teachers of their own
+     * circle. No System Administrator is managed through the API at all.
+     */
+    public function requireStaffManagement(array $actor, StaffUser $target): void
+    {
+        if ($target->roleCode() === 'SYS_ADMIN') {
+            throw new HttpException(403, 'System administrators cannot be modified here');
+        }
+        if ($actor['role'] === 'SYS_ADMIN') {
+            if ($target->roleCode() !== 'CIRCLE_ADMIN') throw new HttpException(403, 'A System Administrator manages circle supervisors only');
+            return;
+        }
+        if ($target->roleCode() !== 'TEACHER') throw new HttpException(403, 'A Circle Supervisor manages teachers only');
+        $this->requireCircleAccess($actor, (int) $target->circle_id);
+    }
+
+    /**
      * Detailed student data (FR16). A student may read only their own; a Circle Admin only
      * their own circle; a Teacher only the students assigned to them — the §9 RBAC matrix
      * requires "Teacher → another teacher's student → 403", not merely a circle check.
