@@ -190,8 +190,9 @@ class AuthRbacService
      * The shorter code is a deliberate trade of keyspace for usability, and it is safe only
      * because guessing is bounded elsewhere: MAX_ATTEMPTS failures lock an IP out for
      * LOCKOUT_SECONDS, and HOURLY_MAX caps an IP at 100 tries an hour, so the
-     * ~9.3 million combinations cannot be walked. The code still grants nothing but one
-     * student's own read-only dashboard (FR16) and stays revocable on demand (NFR3).
+     * 21³ × 8³ ≈ 4.7 million combinations (no I, O, Q, S, Z, 0 or 1) cannot be walked.
+     * The code still grants nothing but one student's own read-only dashboard (FR16) and
+     * stays revocable on demand (NFR3).
      */
     public function generateAccessCode(): string
     {

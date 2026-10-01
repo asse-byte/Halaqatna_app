@@ -336,7 +336,8 @@ English leaking into the Arabic interface.
    link is issued, so a send that could never go out does not retire a link still in use.
 3. **Access code length: 8 → 6** (three letters, three digits). NFR3's requirements —
    single-purpose, revocable — both hold, and the report states no length. The trade must be
-   stated explicitly: ~9.3 million combinations, held by the NFR3a throttles (five failures
+   stated explicitly: 21³ × 8³ ≈ 4.7 million combinations (the alphabet leaves out the
+   lookalikes I, O, Q, S, Z, 0 and 1), held by the NFR3a throttles (five failures
    then a fifteen-minute lockout; 100 attempts per hour per IP), granting nothing but one
    student's own read-only dashboard (FR16). The eight-character codes were being regenerated
    at almost every sign-in because nobody could retain them, which defeated FR2 in practice.
