@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Copy, FileDown, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { FileDown, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
 import { api, errMsg, openPdf } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, ErrorChip, Modal, PageTitle, Table, TrendChart } from "../../components/ui-kit";
+import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, ErrorChip, PageTitle, Table, TrendChart } from "../../components/ui-kit";
 import { MetricPanel } from "../../components/MetricPanel";
 import { ForecastCard } from "../../components/ForecastCard";
 import { SessionEditor } from "../../components/SessionEditor";
-import { formatDate, toLocalDate } from "../../lib/dates";
+import { toLocalDate } from "../../lib/dates";
 import { bandFor } from "../../lib/mastery";
 import { rangeLabel } from "../../lib/surahs";
 import { fillTemplate, openWhatsApp, toWhatsAppNumber } from "../../lib/whatsapp";
@@ -23,43 +23,45 @@ export default function StudentPerformance() {
   const [m, setM] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [pred, setPred] = useState(null);
-  const [share, setShare] = useState(null);
-  const [shareOpen, setShareOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
   const load = () => Promise.all([
     api.get(`/students/${id}`), api.get(`/students/${id}/metrics`), api.get(`/students/${id}/sessions`),
-    api.get(`/students/${id}/prediction`), staff ? api.get(`/students/${id}/share-link`) : Promise.resolve({ data: null }),
-  ]).then(([s, mm, ss, p, sh]) => { setStudent(s.data); setM(mm.data); setSessions(ss.data); setPred(p.data); setShare(sh.data); })
+    api.get(`/students/${id}/prediction`),
+  ]).then(([s, mm, ss, p]) => { setStudent(s.data); setM(mm.data); setSessions(ss.data); setPred(p.data); })
     .catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, [id]);
-
-  const issueShare = () => api.post(`/students/${id}/share-link`).then((r) => { setShare(r.data); return r.data; });
-  const createShare = () => issueShare().then(() => toast.success(t("share_created"))).catch((e) => toast.error(errMsg(e)));
-  const revokeShare = () => api.delete(`/share-links/${share.link_id}`).then(() => { setShare(null); toast.success(t("share_revoked")); }).catch((e) => toast.error(errMsg(e)));
-  const copyShare = () => navigator.clipboard?.writeText(share?.report_url || "")
-    .then(() => toast.success(t("copied")))
-    .catch(() => toast.error(t("error")));
 
   /**
    * FR15 delivered the way a parent actually receives things: one tap opens WhatsApp on the
    * guardian's number with the message written and the report link in it. The teacher only
-   * presses send. The link is created here if none is live, so the button works first time.
+   * presses send. This is the only way a report leaves the system for a guardian — there is
+   * no separate panel for copying, opening or revoking the link.
+   *
+   * WhatsApp carries text only (`wa.me` cannot attach a file), so the message has to carry a
+   * link to the PDF; the token behind it is the delivery, not something the teacher manages.
+   *
+   * Every send issues a fresh link, and issuing one retires the previous link (one live link
+   * per student, §2.13). That is what keeps a link revocable now that no panel offers a
+   * revoke button: a message sent to a wrong number stops working the moment the teacher
+   * corrects the number and sends again. Links still expire after 30 days on their own.
+   *
+   * The number is checked before the link is issued, so a student with no guardian number on
+   * file does not have their live link retired by a send that could never have gone out.
    */
   const sendWhatsApp = async () => {
+    if (!toWhatsAppNumber(student.guardian_phone)) { toast.error(t("share_no_phone")); return; }
     setSharing(true);
     try {
-      const link = share ?? (await issueShare());
-      const phone = link.guardian_phone || student.guardian_phone;
-      if (!toWhatsAppNumber(phone)) { toast.error(t("share_no_phone")); return; }
+      const { data: link } = await api.post(`/students/${id}/share-link`);
       const message = fillTemplate(t("share_message"), {
         student: student.name, circle: student.circle?.name ?? "",
         juz: student.current_juz, band: t(`band_${bandFor(m.mastery)}`),
         url: link.report_url,
       });
-      openWhatsApp(phone, message);
+      openWhatsApp(link.guardian_phone || student.guardian_phone, message);
     } catch (e) { toast.error(errMsg(e)); } finally { setSharing(false); }
   };
 
@@ -104,7 +106,6 @@ export default function StudentPerformance() {
             <Share2 size={16} />{sharing ? t("share_preparing") : t("share_whatsapp")}
           </button>
         )}
-        {staff && <button data-testid="share-parents-button" className={btnGhost} onClick={() => setShareOpen(true)}>{t("share_parents")}</button>}
       </PageTitle>
 
       {staff && (
@@ -175,38 +176,6 @@ export default function StudentPerformance() {
           onSaved={() => { setEditing(null); toast.success(t("session_updated")); load(); }}
         />
       )}
-
-      <Modal open={shareOpen} onClose={() => setShareOpen(false)} title={t("share_parents")} subtitle={t("share_help")}>
-        {!toWhatsAppNumber(student.guardian_phone) && (
-          <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="no-guardian-phone">
-            {t("share_no_phone")}{" "}
-            {actor.role === "CIRCLE_ADMIN" && <Link to="/circle/roster" className="font-semibold underline">{t("share_add_phone")}</Link>}
-          </p>
-        )}
-        {share ? (
-          <div className="space-y-3">
-            <div className="glass flex items-center gap-2 rounded-xl px-3 py-2">
-              <input readOnly dir="ltr" data-testid="share-url-input" className="min-w-0 flex-1 bg-transparent font-mono text-xs outline-none" value={share.report_url} onFocus={(e) => e.target.select()} />
-              <button data-testid="share-copy-button" className={btnGhost} onClick={copyShare} title={t("copy_link")}><Copy size={14} /></button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("expires")} <span dir="ltr">{formatDate(share.expires_at)}</span>
-              {share.view_count > 0 && <> · {t("views")}: {share.view_count}</>}
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <a href={share.report_url} target="_blank" rel="noreferrer" data-testid="share-open-link" className={btnGhost}>{t("open_link")}</a>
-              <button data-testid="share-revoke-button" className={`${btnGhost} text-destructive`} onClick={revokeShare}>{t("revoke_link")}</button>
-              <button data-testid="share-regenerate-button" className={btnGhost} onClick={createShare}>{t("new_link")}</button>
-              <button data-testid="share-whatsapp-modal" className={btnPrimary} onClick={sendWhatsApp} disabled={sharing}><Share2 size={14} />{t("share_whatsapp")}</button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-end gap-2">
-            <button data-testid="share-create-button" className={btnGhost} onClick={createShare}>{t("create_link")}</button>
-            <button data-testid="share-whatsapp-empty" className={btnPrimary} onClick={sendWhatsApp} disabled={sharing}><Share2 size={14} />{t("share_whatsapp")}</button>
-          </div>
-        )}
-      </Modal>
 
       <ConfirmDialog
         open={!!confirm}
