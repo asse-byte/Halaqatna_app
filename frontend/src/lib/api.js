@@ -15,6 +15,8 @@ export const api = axios.create({ baseURL: `${BASE}/api`, headers: { Accept: "ap
 api.interceptors.request.use((cfg) => {
   const token = localStorage.getItem(TOKEN_KEY);
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  // The API answers refusals and validation errors in this language (NFR6).
+  cfg.headers["Accept-Language"] = localStorage.getItem("halaqtna_locale") || "ar";
   return cfg;
 });
 

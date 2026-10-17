@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\JwtAuthenticate;
+use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,10 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Only authentication is middleware. Every AUTHORIZATION decision is made by the
-        // Auth & RBAC Service, called explicitly from the controller that needs it (rule 5)
-        // — most checks depend on the resource (this circle, this student), which a route
+        // Authentication and the response language are the only middleware. Every
+        // AUTHORIZATION decision is made by the Auth & RBAC Service, called explicitly from
+        // the controller that needs it (rule 5) — most checks depend on the resource (this circle, this student), which a route
         // alias cannot express, so there is deliberately no `role:` middleware.
+        $middleware->api(prepend: [SetLocale::class]);
         $middleware->alias([
             'auth.jwt' => JwtAuthenticate::class,
         ]);
@@ -47,19 +49,19 @@ return Application::configure(basePath: dirname(__DIR__))
             // findOrFail() on an unknown id. Laravel's own message names the model class
             // ("No query results for model [App\Models\Student] 7"), which is internal detail.
             if ($e->getPrevious() instanceof ModelNotFoundException) {
-                return response()->json(['message' => 'Not found'], 404);
+                return response()->json(['message' => __('Not found')], 404);
             }
             if ($e instanceof HttpExceptionInterface) {
                 // Keep the exception's own headers — a 429 carries Retry-After (NFR3a, §5.1).
-                return response()->json(['message' => $e->getMessage() ?: 'Error'], $e->getStatusCode(), $e->getHeaders());
+                return response()->json(['message' => $e->getMessage() ?: __('Error')], $e->getStatusCode(), $e->getHeaders());
             }
             // Driver-independent: MySQL says "Duplicate entry" / "a foreign key constraint
             // fails", SQLite says "UNIQUE constraint failed" / "FOREIGN KEY constraint failed".
             if ($e instanceof UniqueConstraintViolationException) {
-                return response()->json(['message' => 'Duplicate entry — this record already exists'], 409);
+                return response()->json(['message' => __('Duplicate entry — this record already exists')], 409);
             }
             if ($e instanceof QueryException && stripos($e->getMessage(), 'foreign key constraint') !== false) {
-                return response()->json(['message' => 'Operation refused — record is still referenced'], 409);
+                return response()->json(['message' => __('Operation refused — record is still referenced')], 409);
             }
             return null;
         });

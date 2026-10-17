@@ -91,7 +91,7 @@ class CircleController extends Controller
         $a = $this->actor($r);
         $this->rbac->requireCircleAccess($a, $id);
         $criterion = $r->query('criterion', 'momentum');
-        abort_unless(in_array($criterion, ['momentum', 'precision', 'consistency', 'review_depth'], true), 422, 'Unknown criterion');
+        abort_unless(in_array($criterion, ['momentum', 'precision', 'consistency', 'review_depth'], true), 422, __('Unknown criterion'));
         return response()->json(['criterion' => $criterion, 'circle_id' => $id, 'rows' => $g->leaderboard(Circle::findOrFail($id), $criterion)]);
     }
 
@@ -135,7 +135,7 @@ class CircleController extends Controller
         $a = $this->actor($r);
         $this->rbac->requireDeploymentAdmin($a);
         $c = Circle::withCount(['students', 'staff'])->findOrFail($id);
-        abort_if($c->students_count > 0 || $c->staff_count > 0, 409, 'This circle still has a supervisor, teachers or students. Move or remove them first.');
+        abort_if($c->students_count > 0 || $c->staff_count > 0, 409, __('This circle still has a supervisor, teachers or students. Move or remove them first.'));
         $c->delete();
         $this->audit->log($a, 'DELETE', 'circle', $id, ['name' => $c->name]);
         return response()->json(['deleted' => true]);
@@ -186,7 +186,7 @@ class CircleController extends Controller
         $r->validate(['settings' => 'required|array']);
         $unknown = array_diff(array_keys($r->input('settings')), array_keys(self::SETTING_RULES));
         if ($unknown) {
-            throw ValidationException::withMessages(['settings' => 'Unknown setting: '.implode(', ', $unknown)]);
+            throw ValidationException::withMessages(['settings' => __('Unknown setting: :keys', ['keys' => implode(', ', $unknown)])]);
         }
         $rules = [];
         foreach (self::SETTING_RULES as $key => $rule) {

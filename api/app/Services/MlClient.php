@@ -94,14 +94,24 @@ class MlClient
         } catch (\Throwable $e) {
             Log::warning('ML service unavailable: '.$e->getMessage());
 
-            return [503, ['message' => 'The forecasting service is not reachable right now.']];
+            return [503, ['message' => __('The forecasting service is not reachable right now.')]];
         }
         $body = $resp->json();
         if ($resp->successful() && is_array($body)) {
             return [200, $body];
         }
         $detail = is_array($body) ? ($body['detail'] ?? $body['message'] ?? null) : null;
+        if ($resp->status() >= 500 || !is_string($detail)) {
+            // A 5xx detail is the service's own failure ("ML_DATABASE_URL not set", a driver
+            // error) — logged for the operator, never shown to the user.
+            if (is_string($detail)) Log::warning('ML evaluation failed: '.$detail);
 
-        return [$resp->status() >= 500 ? 502 : $resp->status(), ['message' => is_string($detail) ? $detail : 'The forecasting service could not run the evaluation.']];
+            return [$resp->status() >= 500 ? 502 : $resp->status(), ['message' => __('The forecasting service could not run the evaluation.')]];
+        }
+        // A 4xx is the "dataset too small" refusal, written in English with the row counts.
+        // It is passed on verbatim in English and replaced by its translation otherwise.
+        $message = app()->isLocale('en') ? $detail : __('There is not yet enough recorded data for a meaningful evaluation.');
+
+        return [$resp->status(), ['message' => $message]];
     }
 }

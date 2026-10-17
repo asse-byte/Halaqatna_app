@@ -63,8 +63,8 @@ class ProfileController extends Controller
             'new_password' => 'required|'.self::PASSWORD_RULE.'|confirmed',
         ]);
         $u = $a['model'];
-        abort_unless(Hash::check($d['current_password'], $u->password_hash), 422, 'The current password is not correct');
-        abort_if(Hash::check($d['new_password'], $u->password_hash), 422, 'The new password must differ from the current one');
+        abort_unless(Hash::check($d['current_password'], $u->password_hash), 422, __('The current password is not correct'));
+        abort_if(Hash::check($d['new_password'], $u->password_hash), 422, __('The new password must differ from the current one'));
 
         $u->password_hash = Hash::make($d['new_password']);
         $u->save();

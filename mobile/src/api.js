@@ -1,6 +1,6 @@
 import axios from "axios";
 import Constants from "expo-constants";
-import { tr } from "./i18n";
+import { currentLocale, tr } from "./i18n";
 
 // Base URL comes from app.json → expo.extra.apiUrl (nginx public HTTPS endpoint); never hardcode.
 export const api = axios.create({ baseURL: `${Constants.expoConfig?.extra?.apiUrl}/api`, timeout: 15000 });
@@ -10,6 +10,12 @@ export const setToken = (t) => {
   else delete api.defaults.headers.common.Authorization;
 };
 export const hasToken = () => Boolean(api.defaults.headers.common.Authorization);
+
+// The API answers refusals and validation errors in the interface language (NFR6).
+api.interceptors.request.use((cfg) => {
+  cfg.headers["Accept-Language"] = currentLocale();
+  return cfg;
+});
 
 /**
  * What to do when the server says the session is over (expired token, a password changed

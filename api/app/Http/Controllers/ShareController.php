@@ -107,7 +107,7 @@ class ShareController extends Controller
         $link = ProgressShareLink::find($linkId);
         // An unknown link id is a 404 for the same reason an unknown token is: do not
         // confirm that a link exists to someone who is not allowed to know.
-        abort_if(!$link, 404, 'Not found');
+        abort_if(!$link, 404, __('Not found'));
         $this->rbac->requireShareLinkControl($a, $link);
         if ($link->revoked_at === null) {
             $link->revoked_at = now();

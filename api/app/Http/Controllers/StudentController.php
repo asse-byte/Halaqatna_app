@@ -130,7 +130,7 @@ class StudentController extends Controller
         $this->rbac->requireRole($a, ['CIRCLE_ADMIN']);
         $s = Student::findOrFail($id);
         $this->rbac->requireStudentManagement($a, $s);
-        abort_if($s->sessions()->exists(), 409, 'This student has recorded sessions. Suspend the student instead of deleting the record.');
+        abort_if($s->sessions()->exists(), 409, __('This student has recorded sessions. Suspend the student instead of deleting the record.'));
         DB::transaction(function () use ($a, $s) {
             $s->delete(); // student_teacher, share links and badges cascade (Table 4.1)
             $this->audit->log($a, 'DELETE', 'student', $s->student_id, ['name' => $s->name, 'circle_id' => $s->circle_id]);
@@ -142,8 +142,8 @@ class StudentController extends Controller
     {
         $teachers = StaffUser::with('role')->whereIn('user_id', $ids)->get();
         foreach ($teachers as $t) {
-            abort_if($t->roleCode() !== 'TEACHER', 422, "User {$t->name} is not a teacher");
-            abort_if((int) $t->circle_id !== (int) $s->circle_id, 422, "Teacher {$t->name} belongs to another circle");
+            abort_if($t->roleCode() !== 'TEACHER', 422, __('User :name is not a teacher', ['name' => $t->name]));
+            abort_if((int) $t->circle_id !== (int) $s->circle_id, 422, __('Teacher :name belongs to another circle', ['name' => $t->name]));
         }
         $sync ? $s->teachers()->sync($ids) : $s->teachers()->syncWithoutDetaching($ids);
     }
@@ -221,7 +221,7 @@ class StudentController extends Controller
     {
         $s = $this->studentFor($r, $id);
         $c = Challenge::findOrFail($challengeId);
-        abort_if($s->challenges()->where('challenge.challenge_id', $c->challenge_id)->exists(), 409, 'Already joined');
+        abort_if($s->challenges()->where('challenge.challenge_id', $c->challenge_id)->exists(), 409, __('Already joined'));
         $s->challenges()->attach($c->challenge_id, ['status' => 'ACTIVE', 'progress' => 0, 'started_at' => now()]);
         $this->audit->log($this->actor($r), 'CREATE', 'student_challenge', $c->challenge_id, ['student_id' => $s->student_id]);
         return response()->json($s->challenges()->get(), 201);

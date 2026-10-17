@@ -41,7 +41,7 @@ class AuthRbacService
     {
         if (RateLimiter::tooManyAttempts($key, $max)) {
             $seconds = RateLimiter::availableIn($key);
-            throw new HttpException(429, 'Too many failed attempts. Try again in '.max(1, (int) ceil($seconds / 60)).' minute(s).', null, ['Retry-After' => (string) $seconds]);
+            throw new HttpException(429, __('Too many failed attempts. Try again in :minutes minute(s).', ['minutes' => max(1, (int) ceil($seconds / 60))]), null, ['Retry-After' => (string) $seconds]);
         }
     }
 
@@ -60,7 +60,7 @@ class AuthRbacService
                 $this->audit->anonymous('CREATE', 'auth_lockout', null, $context + ['scope' => $name, 'threshold' => $max, 'lockout_seconds' => $decay]);
             }
         }
-        throw new HttpException(401, self::GENERIC_FAILURE);
+        throw new HttpException(401, __(self::GENERIC_FAILURE));
     }
 
     /**
@@ -166,7 +166,7 @@ class AuthRbacService
     {
         $link = ProgressShareLink::where('token', $token)->first();
         if (!$link || !$link->isActive()) {
-            throw new HttpException(404, 'Not found');
+            throw new HttpException(404, __('Not found'));
         }
         return $link;
     }
@@ -261,13 +261,13 @@ class AuthRbacService
     {
         $header = $request->header('Authorization', '');
         if (!str_starts_with($header, 'Bearer ')) {
-            throw new HttpException(401, 'Not authenticated');
+            throw new HttpException(401, __('Not authenticated'));
         }
         $secret = $this->secret();
         try {
             $payload = (array) JWT::decode(substr($header, 7), new Key($secret, 'HS256'));
         } catch (\Throwable $e) {
-            throw new HttpException(401, 'Invalid or expired token');
+            throw new HttpException(401, __('Invalid or expired token'));
         }
         $type = $payload['typ'] ?? '';
         $version = (string) ($payload['ver'] ?? '');
@@ -275,7 +275,7 @@ class AuthRbacService
         if ($type === 'staff') {
             $user = StaffUser::with('role')->find($payload['sub'] ?? null);
             if (!$user || !$user->is_active || !hash_equals($this->credentialVersion($user->password_hash), $version)) {
-                throw new HttpException(401, 'Session expired — please sign in again');
+                throw new HttpException(401, __('Session expired — please sign in again'));
             }
 
             return ['type' => 'staff', 'id' => $user->user_id, 'role' => $user->roleCode(), 'circle_id' => $user->circle_id, 'model' => $user];
@@ -283,19 +283,19 @@ class AuthRbacService
         if ($type === 'student') {
             $student = Student::find($payload['sub'] ?? null);
             if (!$student || !$student->is_active || !hash_equals($this->credentialVersion($student->access_code), $version)) {
-                throw new HttpException(401, 'Session expired — please sign in again');
+                throw new HttpException(401, __('Session expired — please sign in again'));
             }
 
             return ['type' => 'student', 'id' => $student->student_id, 'role' => 'STUDENT', 'circle_id' => $student->circle_id, 'model' => $student];
         }
-        throw new HttpException(401, 'Invalid token type');
+        throw new HttpException(401, __('Invalid token type'));
     }
 
     // ---------- Authorization decisions ----------
     public function requireRole(array $actor, array $roles): void
     {
         if (!in_array($actor['role'], $roles, true)) {
-            throw new HttpException(403, 'Forbidden for role '.$actor['role']);
+            throw new HttpException(403, __('Forbidden for role :role', ['role' => $actor['role']]));
         }
     }
 
@@ -324,10 +324,10 @@ class AuthRbacService
     public function requireCircleAccess(array $actor, int $circleId): void
     {
         if ($actor['role'] === 'SYS_ADMIN') {
-            throw new HttpException(403, 'A System Administrator manages circles and supervisors, not circle data');
+            throw new HttpException(403, __('A System Administrator manages circles and supervisors, not circle data'));
         }
         if ((int) $actor['circle_id'] !== $circleId) {
-            throw new HttpException(403, 'Access to another circle is not permitted');
+            throw new HttpException(403, __('Access to another circle is not permitted'));
         }
     }
 
@@ -353,13 +353,13 @@ class AuthRbacService
     public function requireStaffManagement(array $actor, StaffUser $target): void
     {
         if ($target->roleCode() === 'SYS_ADMIN') {
-            throw new HttpException(403, 'System administrators cannot be modified here');
+            throw new HttpException(403, __('System administrators cannot be modified here'));
         }
         if ($actor['role'] === 'SYS_ADMIN') {
-            if ($target->roleCode() !== 'CIRCLE_ADMIN') throw new HttpException(403, 'A System Administrator manages circle supervisors only');
+            if ($target->roleCode() !== 'CIRCLE_ADMIN') throw new HttpException(403, __('A System Administrator manages circle supervisors only'));
             return;
         }
-        if ($target->roleCode() !== 'TEACHER') throw new HttpException(403, 'A Circle Supervisor manages teachers only');
+        if ($target->roleCode() !== 'TEACHER') throw new HttpException(403, __('A Circle Supervisor manages teachers only'));
         $this->requireCircleAccess($actor, (int) $target->circle_id);
     }
 
@@ -371,7 +371,7 @@ class AuthRbacService
     public function requireStudentAccess(array $actor, Student $student): void
     {
         if ($actor['type'] === 'student') {
-            if ((int) $actor['id'] !== (int) $student->student_id) throw new HttpException(403, 'Students may only access their own data');
+            if ((int) $actor['id'] !== (int) $student->student_id) throw new HttpException(403, __('Students may only access their own data'));
             return;
         }
         $this->requireAssignedStaff($actor, $student);
@@ -380,7 +380,7 @@ class AuthRbacService
     /** Writes on a student (sessions, access code, roster edits): the circle's supervisor, or an assigned teacher. */
     public function requireStudentManagement(array $actor, Student $student): void
     {
-        if ($actor['type'] !== 'staff') throw new HttpException(403, 'Staff only');
+        if ($actor['type'] !== 'staff') throw new HttpException(403, __('Staff only'));
         $this->requireAssignedStaff($actor, $student);
     }
 
@@ -389,7 +389,7 @@ class AuthRbacService
     {
         $this->requireCircleAccess($actor, (int) $student->circle_id);
         if ($actor['role'] === 'TEACHER' && !$student->teachers()->where('staff_user.user_id', $actor['id'])->exists()) {
-            throw new HttpException(403, 'This student is not assigned to you');
+            throw new HttpException(403, __('This student is not assigned to you'));
         }
     }
 

@@ -170,13 +170,13 @@ class SessionController extends Controller
         foreach ([['surah_from', 'ayah_from'], ['surah_to', 'ayah_to']] as [$sk, $ak]) {
             if ($n($sk) && $n($ak)) {
                 abort_if($n($ak) > Surah::ayahCount($n($sk)), 422,
-                    'Surah '.Surah::name($n($sk), 'en').' has only '.Surah::ayahCount($n($sk)).' ayahs.');
+                    __('Surah :surah has only :count ayahs.', ['surah' => Surah::name($n($sk), app()->getLocale()), 'count' => Surah::ayahCount($n($sk))]));
             }
         }
         if ($n('surah_from') && $n('surah_to')) {
             $backwards = $n('surah_to') < $n('surah_from')
                 || ($n('surah_to') === $n('surah_from') && $n('ayah_to') && $n('ayah_from') && $n('ayah_to') < $n('ayah_from'));
-            abort_if($backwards, 422, 'The end of the range comes before its start.');
+            abort_if($backwards, 422, __('The end of the range comes before its start.'));
         }
     }
 
@@ -231,7 +231,7 @@ class SessionController extends Controller
         // The register may already hold today's row for this student. That is not a clash:
         // it is the same session, so the recitation fills it in instead of being refused.
         $existing = RecitationSession::where('student_id', $student->student_id)->where('session_date', $d['session_date'])->first();
-        abort_if($existing?->hasRecitation(), 409, 'A recitation is already recorded for this student on this date. Open it to edit instead.');
+        abort_if($existing?->hasRecitation(), 409, __('A recitation is already recorded for this student on this date. Open it to edit instead.'));
 
         $session = DB::transaction(function () use ($d, $a, $student, $existing, $g) {
             $s = $existing ?? new RecitationSession(['student_id' => $student->student_id, 'session_date' => $d['session_date']]);
@@ -277,7 +277,7 @@ class SessionController extends Controller
         $this->checkRange($d);
 
         abort_if(RecitationSession::where('student_id', $s->student_id)->where('session_date', $d['session_date'])
-            ->where('session_id', '!=', $s->session_id)->exists(), 409, 'Another session already exists for this student on that date');
+            ->where('session_id', '!=', $s->session_id)->exists(), 409, __('Another session already exists for this student on that date'));
 
         $before = ['pages' => (float) $s->pages_memorized, 'date' => (string) $s->session_date, 'attendance' => $s->attendance_status];
         DB::transaction(function () use ($d, $s, $a, $student, $before, $g) {

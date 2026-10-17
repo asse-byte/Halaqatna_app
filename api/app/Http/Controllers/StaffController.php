@@ -118,7 +118,7 @@ class StaffController extends Controller
         $hasHistory = RecitationSession::where('user_id', $u->user_id)->exists()
             || ProgressShareLink::where('created_by_user_id', $u->user_id)->exists()
             || AuditLog::where('actor_user_id', $u->user_id)->exists();
-        abort_if($hasHistory, 409, 'This account already has recorded activity. Suspend it instead of deleting it.');
+        abort_if($hasHistory, 409, __('This account already has recorded activity. Suspend it instead of deleting it.'));
 
         $name = $u->name;
         $u->students()->detach();
