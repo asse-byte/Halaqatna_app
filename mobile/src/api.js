@@ -1,5 +1,6 @@
 import axios from "axios";
 import Constants from "expo-constants";
+import { tr } from "./i18n";
 
 // Base URL comes from app.json → expo.extra.apiUrl (nginx public HTTPS endpoint); never hardcode.
 export const api = axios.create({ baseURL: `${Constants.expoConfig?.extra?.apiUrl}/api`, timeout: 15000 });
@@ -26,4 +27,14 @@ api.interceptors.response.use(
   }
 );
 
-export const errMsg = (e) => e?.response?.data?.message || (e?.response?.data?.errors && Object.values(e.response.data.errors).flat().join(" ")) || e?.message || "Error";
+/**
+ * The message to show for a failed request. A 4xx carries a message the API wrote for the
+ * user; a 500's text is internal detail and a request with no response only has axios's
+ * "Network Error" — both get a localized message instead.
+ */
+export const errMsg = (e) => {
+  if (!e?.response) return tr(e?.request ? "error_network" : "error");
+  if (e.response.status === 500) return tr("error_server");
+  const d = e.response.data;
+  return d?.message || (d?.errors && Object.values(d.errors).flat().join(" ")) || tr("error");
+};

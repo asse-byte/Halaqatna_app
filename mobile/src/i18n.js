@@ -6,10 +6,13 @@ import en from "../../frontend/src/locales/en.json";
 // Shares the exact same key set as the web client, so the NFR6 parity check covers mobile too.
 const D = { ar, en };
 const Ctx = createContext(null);
+// Mirrors the provider's locale for code outside React (errMsg in api.js).
+let current = "ar";
+export const tr = (k) => D[current][k] ?? D.en[k] ?? k;
 export function LocaleProvider({ children }) {
   const [locale, setLocale] = useState("ar");
   const t = (k, vars) => Object.entries(vars || {}).reduce((s, [a, b]) => s.replace(`{${a}}`, b), D[locale][k] ?? D.en[k] ?? k);
-  const toggle = () => { const n = locale === "ar" ? "en" : "ar"; I18nManager.forceRTL(n === "ar"); setLocale(n); };
+  const toggle = () => { const n = locale === "ar" ? "en" : "ar"; I18nManager.forceRTL(n === "ar"); current = n; setLocale(n); };
   return <Ctx.Provider value={{ locale, t, toggle, isRtl: locale === "ar" }}>{children}</Ctx.Provider>;
 }
 export const useT = () => useContext(Ctx);

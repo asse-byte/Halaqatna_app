@@ -1,4 +1,6 @@
 import axios from "axios";
+import ar from "../locales/ar.json";
+import en from "../locales/en.json";
 
 // Same origin by default: nginx serves the SPA and proxies /api and /p to Laravel, and the
 // Vite dev server proxies the same two paths. Set VITE_API_URL only to point at another host.
@@ -34,11 +36,20 @@ api.interceptors.response.use(
   }
 );
 
-export const errMsg = (e, fallback = "Something went wrong") => {
-  const d = e?.response?.data;
-  if (!d) return e?.message || fallback;
-  if (d.errors) return Object.values(d.errors).flat().join(" ");
-  return d.message || fallback;
+const localized = (key) => (localStorage.getItem("halaqtna_locale") === "en" ? en : ar)[key];
+
+/**
+ * The message to show for a failed request. A 4xx carries a message the API wrote for the
+ * user; a 500 is an unhandled exception whose text (and, with APP_DEBUG on, its trace) is
+ * internal detail, and a request with no response only has axios's "Network Error" — both
+ * get a localized message instead.
+ */
+export const errMsg = (e, fallback = localized("error")) => {
+  if (!e?.response) return e?.request ? localized("error_network") : fallback;
+  if (e.response.status === 500) return localized("error_server");
+  const d = e.response.data;
+  if (d?.errors) return Object.values(d.errors).flat().join(" ");
+  return d?.message || fallback;
 };
 
 /**

@@ -289,6 +289,8 @@
 
   "no_data": "No data yet",
   "error": "Something went wrong",
+  "error_network": "Could not reach the server. Check your connection and try again.",
+  "error_server": "An unexpected server error occurred. Please try again later.",
   "teacher_accounts_only": "This app is for teachers. Supervisors and administrators sign in on the website.",
   "loading": "Loading…",
   "of": "of",
