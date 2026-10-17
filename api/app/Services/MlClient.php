@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Prediction;
 use App\Models\Student;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -46,17 +47,44 @@ class MlClient
         return 'forecast:stale:'.$student->student_id;
     }
 
+    private function post(Student $student, array $metrics, float $remainingPages): Response
+    {
+        return Http::timeout((int) config('halaqtna.ml.timeout', 3))
+            ->post($this->url('/forecast'), [
+                'student_id' => $student->student_id,
+                'momentum' => $metrics['momentum'] ?? 0,
+                'error_density' => $metrics['error_density'] ?? 0,
+                'attendance_rate' => $metrics['attendance_rate'] ?? 0,
+                'remaining_pages' => max(0, $remainingPages),
+            ]);
+    }
+
+    /**
+     * FR10 assumptions — a what-if put to the same model: the same /forecast call, with the
+     * scope's remaining pages and, when one is assumed, a baseline pace in place of the
+     * recorded momentum. Nothing is stored and the UC13 staleness flag is left alone: a
+     * scenario is a question asked of the model, not an update of the student's forecast,
+     * and the `prediction` history must hold only forecasts made from what was recorded.
+     * Null when the service cannot be reached, so the caller can fall back.
+     */
+    public function scenario(Student $student, array $metrics, float $remainingPages): ?array
+    {
+        try {
+            $resp = $this->post($student, $metrics, $remainingPages);
+            if (!$resp->successful()) return null;
+            $d = $resp->json();
+
+            return ['eta_days' => max(0, (int) $d['eta_days']), 'predicted_completion_date' => $d['predicted_completion_date']];
+        } catch (\Throwable $e) {
+            Log::warning('ML service unavailable: '.$e->getMessage());
+            return null;
+        }
+    }
+
     private function requestForecast(Student $student, array $metrics): ?Prediction
     {
         try {
-            $resp = Http::timeout((int) config('halaqtna.ml.timeout', 3))
-                ->post($this->url('/forecast'), [
-                    'student_id' => $student->student_id,
-                    'momentum' => $metrics['momentum'] ?? 0,
-                    'error_density' => $metrics['error_density'] ?? 0,
-                    'attendance_rate' => $metrics['attendance_rate'] ?? 0,
-                    'remaining_pages' => max(0, AnalyticsEngine::PAGES_PER_JUZ - ($metrics['pages_in_current_juz'] ?? 0)),
-                ]);
+            $resp = $this->post($student, $metrics, AnalyticsEngine::PAGES_PER_JUZ - ($metrics['pages_in_current_juz'] ?? 0));
             if (!$resp->successful()) return null;
             $d = $resp->json();
             // New row every time — old predictions are never overwritten.

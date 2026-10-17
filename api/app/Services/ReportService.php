@@ -7,11 +7,15 @@ use App\Models\RecitationSession;
 use App\Models\Student;
 use App\Support\MasteryBand;
 use App\Support\Surah;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /** Report Service — FR14, FR15. The ONLY component that writes to file storage. */
 class ReportService
 {
+    /** Weeks on the dashboards' attendance chart — the window trendDirection() compares, four against four. */
+    private const SUMMARY_WEEKS = 8;
+
     public function __construct(
         private AnalyticsEngine $analytics,
         private GamificationEngine $gamification,
@@ -59,7 +63,15 @@ class ReportService
                 'trend' => $m['trend_summary']['direction'],
                 'xp_total' => $this->gamification->totalXp($s->student_id)];
         })->values();
-        $avg = fn ($k) => round((float) $students->pluck($k)->filter(fn ($v) => $v !== null)->avg(), 1);
+        // Averages are taken over students with at least one recorded session. A student
+        // enrolled yesterday has a pace of 0 only because nothing is recorded yet, and counting
+        // it would pull the circle's figure down for no reason. Nothing to average is null,
+        // not 0: the screen and the PDF both print a dash for null.
+        $recorded = $students->where('sessions_count', '>', 0);
+        $avg = function ($k) use ($recorded) {
+            $vals = $recorded->pluck($k)->filter(fn ($v) => $v !== null);
+            return $vals->isEmpty() ? null : round((float) $vals->avg(), 1);
+        };
         return [
             'circle' => $circle->load('staff.role'),
             'generated_at' => now()->toDateTimeString(),
@@ -102,6 +114,7 @@ class ReportService
 
         $active = $rows->where('is_active', true);
         $withMastery = $active->pluck('mastery')->filter(fn ($v) => $v !== null);
+        $marked = $active->where('sessions_count', '>', 0);
 
         return [
             'circle' => ['circle_id' => $circle->circle_id, 'name' => $circle->name, 'location' => $circle->location, 'schedule_time' => $circle->schedule_time],
@@ -113,14 +126,45 @@ class ReportService
                 'sessions' => (int) $active->sum('sessions_count'),
                 'total_pages' => round((float) $active->sum('total_pages'), 2),
                 'avg_mastery' => $withMastery->isEmpty() ? null : round((float) $withMastery->avg(), 1),
-                'avg_attendance' => $active->isEmpty() ? null : round((float) $active->avg('attendance_rate') * 100, 1),
+                // Over students with a register to read: one with no rows yet has an attendance
+                // rate of 0 only because nothing is recorded, as Mastery is null for them above.
+                'avg_attendance' => $marked->isEmpty() ? null : round((float) $marked->avg('attendance_rate') * 100, 1),
                 'sessions_this_week' => $this->sessionsThisWeek($active->pluck('student_id')->all()),
             ],
+            'weekly_attendance' => $this->weeklyAttendance($active->pluck('student_id')->all()),
             'improving' => $active->where('trend.direction', 'UP')->pluck('name')->values(),
             'needs_attention' => $rows->filter(fn ($r) => $r['is_active'] && ($r['trend']['direction'] === 'DOWN' || ($r['consistency'] !== null && $r['consistency'] < 60)))
                 ->sortBy('mastery')->values(),
             'students' => $rows,
         ];
+    }
+
+    /**
+     * The register week by week, for the summary chart on both dashboards: of the rows marked
+     * for these students that week, the share attended. Present and legacy late count as
+     * attended and absent and excused do not — the same rule as attendanceRate(). The bars
+     * count register rows, so a student with no rows yet adds nothing to any week.
+     *
+     * The window is the eight weeks trendDirection() already compares (four against four).
+     * A week with nothing marked is null rather than 0%: no register is not everyone absent.
+     */
+    private function weeklyAttendance(array $studentIds): array
+    {
+        $start = now()->startOfWeek()->subWeeks(self::SUMMARY_WEEKS - 1);
+        $rows = $studentIds
+            ? RecitationSession::whereIn('student_id', $studentIds)->where('session_date', '>=', $start->toDateString())->get(['session_date', 'attendance_status'])
+            : collect();
+        $byWeek = $rows->groupBy(fn ($s) => Carbon::parse($s->session_date)->startOfWeek()->toDateString());
+
+        $weeks = [];
+        for ($w = $start->copy(); $w <= now(); $w->addWeek()) {
+            $in = $byWeek->get($w->toDateString(), collect());
+            $attended = $in->filter->attended()->count();
+            $weeks[] = ['week' => $w->toDateString(), 'marked' => $in->count(), 'attended' => $attended,
+                'rate' => $in->isEmpty() ? null : round($attended / $in->count() * 100, 1)];
+        }
+
+        return $weeks;
     }
 
     private function sessionsThisWeek(array $studentIds): int

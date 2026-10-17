@@ -248,6 +248,24 @@ class AnalyticsEngine
         ];
     }
 
+    /**
+     * Pages still to memorise in Juz $from to $to (FR10 assumptions), read the way the journey
+     * map reads progress: every Juz before the current one is complete, the current one is
+     * pages_in_current_juz along, and every later one is untouched. With $from = $to = the
+     * current Juz this is exactly the remaining_pages the stored forecast is made from.
+     */
+    public function remainingPages(Student $student, array $metrics, int $from, int $to): float
+    {
+        $left = 0.0;
+        for ($j = $from; $j <= $to; $j++) {
+            $done = $j < $student->current_juz ? self::PAGES_PER_JUZ
+                : ($j === $student->current_juz ? (float) $metrics['pages_in_current_juz'] : 0.0);
+            $left += self::PAGES_PER_JUZ - $done;
+        }
+
+        return round($left, 2);
+    }
+
     /** Full metric bundle for a student (FR7–FR9). */
     public function metrics(Student $student): array
     {

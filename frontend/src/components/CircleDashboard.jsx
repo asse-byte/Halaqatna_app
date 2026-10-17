@@ -5,7 +5,8 @@ import { AlertTriangle, TrendingUp } from "lucide-react";
 import { api, errMsg } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useT } from "../lib/i18n";
-import { MetricCard, PageTitle, Table, btnGhost } from "./ui-kit";
+import { Dash, MetricCard, NewBadge, PageTitle, Table, btnGhost } from "./ui-kit";
+import { BandDistribution, WeeklyAttendanceChart } from "./SummaryCharts";
 
 const BAND_TONE = {
   EXCELLENT: "border-emerald-400/50 text-emerald-700 dark:text-emerald-400",
@@ -61,6 +62,11 @@ export function CircleDashboard({ title, subtitle }) {
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <WeeklyAttendanceChart weeks={data.weekly_attendance} />
+        <BandDistribution students={data.students} />
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="glass rounded-2xl p-4 sm:p-5 animate-rise" data-testid="improving-panel">
           <div className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-600 dark:text-emerald-400" /><span className="eyebrow">{t("improving_students")}</span></div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -82,7 +88,7 @@ export function CircleDashboard({ title, subtitle }) {
                   <span className="font-semibold">{s.name}</span>
                   <span className="flex items-center gap-2 text-xs">
                     <span className={TREND_TONE[s.trend.direction]}>{t(`trend_${s.trend.direction}`)}</span>
-                    <span className="text-muted-foreground">{t("consistency")} {s.consistency ?? "—"}%</span>
+                    <span className="text-muted-foreground">{t("consistency")} {s.consistency == null ? "—" : `${s.consistency}%`}</span>
                   </span>
                 </Link>
               ))}
@@ -96,23 +102,33 @@ export function CircleDashboard({ title, subtitle }) {
         testId="dashboard-students-table"
         empty={t("no_students_yet")}
       >
-        {data.students.map((s) => (
-          <tr key={s.student_id} data-testid={`dash-row-${s.student_id}`} className={s.is_active ? "" : "opacity-50"}>
-            <td className="px-4 py-3 font-semibold">
-              <Link to={`/staff/students/${s.student_id}`} className="hover:underline">{s.name}</Link>
-              {!s.is_active && <span className="ms-2 text-[11px] text-muted-foreground">({t("suspended")})</span>}
-            </td>
-            <td className="px-4 py-3">{s.current_juz}</td>
-            <td className="px-4 py-3"><span className={`chip !min-h-0 ${BAND_TONE[s.band]}`}>{s.mastery ?? "—"} · {t(`band_${s.band}`)}</span></td>
-            <td className="px-4 py-3">{s.momentum} <span className="text-xs text-muted-foreground">{t("pages_per_week")}</span></td>
-            <td className="px-4 py-3">{s.consistency ?? "—"}%</td>
-            <td className={`px-4 py-3 text-xs font-semibold ${TREND_TONE[s.trend.direction]}`}>{t(`trend_${s.trend.direction}`)}</td>
-            <td className="px-4 py-3 text-xs text-muted-foreground" dir="ltr">{s.last_session_date || t("never")}</td>
-            <td className="px-4 py-3 text-end">
-              <Link to={`/staff/students/${s.student_id}`} className={btnGhost} data-testid={`dash-view-${s.student_id}`}>{t("view_performance")}</Link>
-            </td>
-          </tr>
-        ))}
+        {data.students.map((s) => {
+          // Nothing recorded yet: the figures do not exist, so the row says "new" once and
+          // leaves the rest blank instead of reading as a student who scored zero.
+          const fresh = s.sessions_count === 0;
+          return (
+            <tr key={s.student_id} data-testid={`dash-row-${s.student_id}`} className={s.is_active ? "" : "opacity-50"}>
+              <td className="px-4 py-3 font-semibold whitespace-nowrap">
+                <Link to={`/staff/students/${s.student_id}`} className="hover:underline">{s.name}</Link>
+                {fresh && <NewBadge testId={`dash-new-${s.student_id}`} />}
+                {!s.is_active && <span className="ms-2 text-[11px] text-muted-foreground">({t("suspended")})</span>}
+              </td>
+              <td className="px-4 py-3">{s.current_juz}</td>
+              <td className="px-4 py-3">
+                {fresh ? <Dash /> : (
+                  <span className={`chip !min-h-0 whitespace-nowrap ${BAND_TONE[s.band]}`}>{s.mastery != null && <>{s.mastery} · </>}{t(`band_${s.band}`)}</span>
+                )}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap">{fresh ? <Dash /> : <>{s.momentum} <span className="text-xs text-muted-foreground">{t("pages_per_week")}</span></>}</td>
+              <td className="px-4 py-3">{s.consistency == null ? <Dash /> : `${s.consistency}%`}</td>
+              <td className={`px-4 py-3 text-xs font-semibold ${TREND_TONE[s.trend.direction]}`}>{fresh ? <Dash /> : t(`trend_${s.trend.direction}`)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground" dir="ltr">{s.last_session_date || <Dash />}</td>
+              <td className="px-4 py-3 text-end">
+                <Link to={`/staff/students/${s.student_id}`} className={`${btnGhost} whitespace-nowrap`} data-testid={`dash-view-${s.student_id}`}>{t("view_performance")}</Link>
+              </td>
+            </tr>
+          );
+        })}
       </Table>
     </div>
   );

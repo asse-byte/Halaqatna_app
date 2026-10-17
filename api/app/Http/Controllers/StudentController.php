@@ -6,6 +6,7 @@ use App\Models\Badge;
 use App\Models\Challenge;
 use App\Models\StaffUser;
 use App\Models\Student;
+use App\Models\SystemSetting;
 use App\Models\XpLedger;
 use App\Services\AnalyticsEngine;
 use App\Services\GamificationEngine;
@@ -162,19 +163,72 @@ class StudentController extends Controller
      * could not be reached the last time it should have updated it — not that this request
      * happened not to ask for a new one.
      */
+    /**
+     * FR10 assumptions: the baseline paces a teacher can assume, each a provisional constant
+     * in system_setting (rule 8). The second value is only the fallback for a database
+     * seeded before the setting existed.
+     */
+    private const PACE_SETTINGS = ['new' => ['pace_new', 1.0], 'review' => ['pace_review', 5.0], 'fast' => ['pace_fast', 10.0]];
+
     public function prediction(Request $r, int $id, MlClient $ml, AnalyticsEngine $analytics)
     {
         $s = $this->studentFor($r, $id);
-        $fresh = $r->boolean('refresh') ? $ml->forecast($s, $analytics->metrics($s)) : null;
+        $d = $r->validate([
+            'scope_from' => 'required_with:scope_to|integer|between:1,30',
+            'scope_to' => 'required_with:scope_from|integer|between:1,30|gte:scope_from',
+            'pace' => 'sometimes|in:recorded,'.implode(',', array_keys(self::PACE_SETTINGS)),
+        ]);
+        $m = $analytics->metrics($s);
+        $fresh = $r->boolean('refresh') ? $ml->forecast($s, $m) : null;
         $p = $fresh ?? $ml->latest($s);
         $mlAvailable = !$ml->isStale($s);
+        $paces = array_map(fn ($x) => SystemSetting::num($x[0], $x[1]), self::PACE_SETTINGS);
 
         return response()->json([
             'prediction' => $p,
             'stale' => $p === null || !$mlAvailable,
             'generated_at' => $p?->generated_at,
             'ml_available' => $mlAvailable,
+            // What the assumptions panel needs to explain itself: how much history the
+            // forecast rests on, and what each baseline pace stands for.
+            'assumptions' => [
+                'sessions_count' => $m['sessions_count'],
+                'min_sessions' => (int) SystemSetting::num('forecast_min_sessions', 4),
+                'recorded_pace' => $m['momentum'],
+                'paces' => $paces,
+                'current_juz' => $s->current_juz,
+            ],
+            'scenario' => isset($d['scope_from']) || isset($d['pace']) ? $this->scenario($s, $m, $d, $paces, $ml, $analytics) : null,
         ]);
+    }
+
+    /**
+     * FR10 assumptions — "when would this student finish Juz 8 to 10 at five pages a week?"
+     *
+     * The scope and the pace are request parameters, never stored: nothing here writes a
+     * prediction row, a setting or a metric (rule 3), so trying an assumption cannot change
+     * the student's forecast or anyone's figures. The question still goes to the ML service
+     * (rule 6). When the service cannot be reached, the answer falls back to the naïve
+     * baseline of the NFR10 protocol — remaining pages ÷ pages per week — and says so in
+     * `source`, so an estimate is never shown as the model's forecast.
+     */
+    private function scenario(Student $s, array $m, array $d, array $paces, MlClient $ml, AnalyticsEngine $analytics): array
+    {
+        $from = (int) ($d['scope_from'] ?? $s->current_juz);
+        $to = (int) ($d['scope_to'] ?? $s->current_juz);
+        $pace = $d['pace'] ?? 'recorded';
+        $ppw = $pace === 'recorded' ? (float) $m['momentum'] : $paces[$pace];
+        $remaining = $analytics->remainingPages($s, $m, $from, $to);
+
+        $forecast = $ml->scenario($s, ['momentum' => $ppw] + $m, $remaining);
+        $source = $forecast ? 'model' : 'estimate';
+        if (!$forecast) {
+            $eta = $remaining <= 0 ? 0 : ($ppw > 0 ? (int) round($remaining / $ppw * 7) : null);
+            $forecast = ['eta_days' => $eta, 'predicted_completion_date' => $eta === null ? null : now()->addDays($eta)->toDateString()];
+        }
+
+        return ['scope_from' => $from, 'scope_to' => $to, 'pace' => $pace, 'pages_per_week' => $ppw,
+            'remaining_pages' => $remaining, 'source' => $source] + $forecast;
     }
 
     /**

@@ -35,8 +35,9 @@ export function MetricCard({ label, value, unit, hint, testId, accent, delay = 0
         )}
       </div>
       <div className="mt-2 flex items-baseline gap-1.5">
-        <span className={`metric-number ${accent ? "!text-gold" : ""}`}>{value ?? "—"}</span>
-        {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
+        <span className={`metric-number ${accent ? "!text-gold" : ""} ${value == null ? "!text-muted-foreground/60" : ""}`}>{value ?? "—"}</span>
+        {/* A dash carries no unit: "— %" reads as a broken number rather than "nothing yet". */}
+        {unit && value != null && <span className="text-xs text-muted-foreground">{unit}</span>}
       </div>
       {hint && (!compact || open) && <div className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{hint}</div>}
     </div>
@@ -52,11 +53,12 @@ export function MasteryGauge({ value, testId = "mastery-score-card" }) {
     <div data-testid={testId} className="glass rounded-2xl p-4 sm:p-5 flex items-center gap-4 animate-rise">
       <svg viewBox="0 0 128 128" className="h-28 w-28 -rotate-[135deg] shrink-0" aria-hidden="true">
         <circle cx="64" cy="64" r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth="12" strokeDasharray={`${c * 0.75} ${c}`} strokeLinecap="round" />
-        <circle cx="64" cy="64" r={r} fill="none" stroke={v >= 80 ? "#10B981" : v >= 50 ? "#D97706" : "#DC2626"} strokeWidth="12" strokeDasharray={`${dash} ${c}`} strokeLinecap="round" className="transition-[stroke-dasharray] duration-700" />
+        {/* No score yet draws no arc: a zero-length round-capped stroke would paint a red dot. */}
+        {value != null && <circle cx="64" cy="64" r={r} fill="none" stroke={v >= 80 ? "#10B981" : v >= 50 ? "#D97706" : "#DC2626"} strokeWidth="12" strokeDasharray={`${dash} ${c}`} strokeLinecap="round" className="transition-[stroke-dasharray] duration-700" />}
       </svg>
       <div>
         <div className="eyebrow">{t("mastery")}</div>
-        <div className="metric-number">{value ?? "—"}<span className="text-base text-muted-foreground">/100</span></div>
+        <div className={`metric-number ${value == null ? "!text-muted-foreground/60" : ""}`}>{value ?? "—"}{value != null && <span className="text-base text-muted-foreground">/100</span>}</div>
         <div className="mt-1 text-sm font-semibold text-secondary" data-testid="mastery-band">{t(`band_${bandFor(value)}`)}</div>
         <div className="mt-1 max-w-[16rem] text-xs leading-relaxed text-muted-foreground">{t("mastery_hint")}</div>
       </div>
@@ -121,6 +123,26 @@ export function TrendChart({ trend, summary, testId = "trend-chart" }) {
       </div>
     </div>
   );
+}
+
+/**
+ * A student nobody has recorded a session for yet. Their figures are not zero — they do not
+ * exist — so the tables show this badge and a dash instead of a row of 0, 0% and 0.00.
+ */
+export function NewBadge({ testId, className = "ms-2" }) {
+  const { t } = useT();
+  return (
+    <span data-testid={testId} title={t("new_student_hint")}
+      className={`${className} inline-flex items-center rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 align-middle text-[11px] font-semibold text-gold-hover dark:text-amber-300`}>
+      {t("new_student_badge")}
+    </span>
+  );
+}
+
+/** The quiet dash that stands in for a figure that does not exist yet. */
+export function Dash() {
+  const { t } = useT();
+  return <span className="text-muted-foreground/60" title={t("no_data")}>—</span>;
 }
 
 export const ERROR_STYLES = {

@@ -33,7 +33,13 @@ class DatabaseSeeder extends Seeder
             ErrorType::firstOrCreate(['code' => $c], ['label_ar' => $ar, 'label_en' => $en, 'weight' => $w]);
         }
         foreach ([['d_max', '3.0', 'Mastery normalising constant (provisional)'], ['alpha', '0.4', 'Momentum EWMA smoothing factor (provisional)'],
-            ['xp_per_page', '10', 'XP per page memorized'], ['xp_per_session', '5', 'XP per session attended']] as [$k, $v, $d]) {
+            ['xp_per_page', '10', 'XP per page memorized'], ['xp_per_session', '5', 'XP per session attended'],
+            // FR10 assumptions — baseline paces a teacher can assume when a student's history is
+            // too short to have a pace of its own, and the history the forecast should rest on.
+            ['pace_new', '1', 'Baseline pace, new memorisation: pages per week (provisional)'],
+            ['pace_review', '5', 'Baseline pace, consolidation and review: pages per week (provisional)'],
+            ['pace_fast', '10', 'Baseline pace, fast student: pages per week (provisional)'],
+            ['forecast_min_sessions', '4', 'Sessions recommended before the forecast is relied on (provisional)']] as [$k, $v, $d]) {
             SystemSetting::firstOrCreate(['setting_key' => $k], ['setting_value' => $v, 'description' => $d]);
         }
         if (Badge::count() === 0) {

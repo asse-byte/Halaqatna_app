@@ -129,7 +129,7 @@ export default function StudentPerformance() {
       <MetricPanel m={m} compact />
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-        <ForecastCard pred={pred} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
+        <ForecastCard pred={pred} studentId={id} canSetPace={staff} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
 

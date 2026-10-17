@@ -5,7 +5,7 @@ import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { btnGhost, btnPrimary, ConfirmDialog, Field, inputCls, Modal, PageTitle, Table } from "../../components/ui-kit";
+import { btnGhost, btnPrimary, ConfirmDialog, Field, inputCls, Modal, NewBadge, PageTitle, Table } from "../../components/ui-kit";
 
 const emptyTeacher = () => ({ kind: "teacher", name: "", email: "", password: "", phone: "", address: "" });
 const emptyStudent = () => ({ kind: "student", name: "", guardian_phone: "", age: "", address: "", current_juz: 1, teacher_ids: [] });
@@ -105,6 +105,7 @@ export default function Roster() {
           <tr key={s.student_id} data-testid={`student-row-${s.student_id}`}>
             <td className="px-4 py-3 font-semibold">
               <Link to={`/staff/students/${s.student_id}`} className="hover:underline" data-testid={`student-link-${s.student_id}`}>{s.name}</Link>
+              {s.sessions_count === 0 && <NewBadge testId={`roster-new-${s.student_id}`} />}
             </td>
             <td className="px-4 py-3">{s.age ?? "—"}</td>
             <td className="px-4 py-3 text-xs" dir="ltr">{s.guardian_phone || "—"}</td>

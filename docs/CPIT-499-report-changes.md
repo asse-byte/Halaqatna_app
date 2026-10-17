@@ -38,6 +38,8 @@ presented as a measured result.
 | `α` (momentum EWMA smoothing) | 0.4 | `system_setting` |
 | XP per page / per session | 10 / 5 | `system_setting` |
 | Pages per Juz | 20 | `AnalyticsEngine`, `ml/main.py` |
+| Baseline paces for the FR10 assumptions — new memorisation / consolidation and review / fast student (pages a week) | 1 / 5 / 10 | `system_setting` (`pace_new`, `pace_review`, `pace_fast`) — §11.3 |
+| Sessions recommended before the forecast is relied on | 4 | `system_setting` (`forecast_min_sessions`) — §11.3 |
 
 Changing any of these is expected (§11 item 3) and must be reported as calibration, with the
 evidence that motivated the change.
@@ -413,3 +415,107 @@ schema; most of them are the code being brought back in line with what the repor
 - **Renewing an access code asks first**, because it signs the student out everywhere.
 - **The System Administrator can reach My Account** (FR22) to change the seeded password.
 - **Clean-up.** 46 unused UI scaffolding components (with their hook, helper and generator config) and 52 unused packages were removed from the web client; two dependencies with published high-severity advisories were upgraded (`npm audit`: 0); ESLint is configured and clean; the locale check now also fails when a client uses a key that exists in neither language.
+
+---
+
+## 11. Fourth review round — the academic supervisor's feedback (Dr. Ahmad Tayeb)
+
+Three requests from the supervisor's review of the running system. None changes a formula, a
+requirement's scope or the schema: no table or column was added, and every new figure is
+computed on read (rule 3). Authorization is unchanged — every endpoint touched still decides
+access through `AuthRbacService` (rule 5). Each new string exists in Arabic and English (NFR6).
+
+### 11.1 The Circle Supervisor's and the teacher's views (FR14, FR20)
+
+| Change | Requirement touched | Position |
+|---|---|---|
+| **No zeros for a student nobody has recorded yet.** Where `sessions_count = 0`, the dashboard table, the circle report table and the roster show a "جديد / New" badge and a dash per figure instead of `0`, `0%` and `0.00`; the staff performance page shows a one-line notice and dashes. A student with sessions keeps every real zero. The Mastery gauge no longer draws a red dot for "no score yet". | FR14, FR20 | Presentation only. The roster gains `sessions_count` (`withCount`, computed on read) so it can tell the two apart. |
+| **Averages leave out students with nothing recorded.** Found while checking the change in the running app: enrolling one student dropped the circle's average attendance from 88.1% to 78.3%, because a student with no register counted as 0% attendance — while the average level already skipped them (Mastery is null). The dashboard's average attendance and the circle report's averages are now taken over students with at least one recorded session, and an average over nothing is `null` (a dash), not `0`. | FR14 | Correction. Pinned by `DashboardSummaryTest`. The per-student formulas are untouched. |
+| **Weekly attendance chart** on both dashboards: for each of the last eight weeks, the share of register rows marked present (late counts as present, as in `attendanceRate`), with a week that has no register left empty rather than shown as 0%. Served as `weekly_attendance` by `GET /api/circles/{id}/dashboard`, scoped exactly like the rest of that payload — a teacher's bars count only their own students, and suspended students count for nobody. | FR14, FR16 | Addition (a view of FR4 data). |
+| **Students by level** on both dashboards: how many active students sit in each Mastery band. The buckets are the existing bands (`MasteryBand` on the server, `lib/mastery.js` in the clients, the `band_*` words) — no new grouping or threshold was introduced, so the chart and the band chip beside each student cannot disagree. | FR14 | Addition (a view of FR7). |
+
+The charts use no library — plain Tailwind markup in `frontend/src/components/SummaryCharts.jsx`.
+Each value is also reachable without colour: every band row carries its word and count, the
+attendance chart has a hover/focus readout and a screen-reader table.
+
+**One constant to note against rule 8.** The chart's eight-week window is
+`ReportService::SUMMARY_WEEKS`, chosen to match the eight weeks `trendDirection()` already
+compares (four against four). It is a display window, not a calibrated coefficient, and is kept
+in code beside the window it mirrors. If the report reads rule 8 as covering display windows
+too, it moves to `system_setting` like the paces in §11.3.
+
+### 11.2 The student's Juz map (FR16) — a demo prototype
+
+- **The 30 Juz are tiles the student taps.** A completed Juz is gold with a crown, the current
+  one carries the circle's green, a "you are here" pin and its progress bar, and the rest are
+  locked. The page opens with the number of Juz completed, the current Juz's progress and the
+  next goal. Tile status is unchanged: the API still derives it from `current_juz`.
+- **Tapping a Juz lists its Surahs** with the ayahs of each that fall inside that Juz. The
+  division (`JUZ_STARTS`, the standard thirty parts of the Madani mushaf) sits beside the
+  existing Surah list in `frontend/src/lib/surahs.js` and reuses its names and ayah counts; it
+  places all 6,236 ayahs in exactly one Juz. Each Surah is **mastered** (gold), **in progress**
+  or **locked**: a Juz before the current one is mastered throughout and one after it is locked;
+  inside the current Juz a Surah is mastered when the passages the teacher recorded cover all
+  of its ayahs there, in progress when they cover some, and if none has been started the first
+  Surah not yet mastered is marked as the current step. Computed in the browser from the
+  student's own sessions, never stored.
+- **"استمع للنموذج" (listen to the model recitation) is a demo.** It opens a player that streams
+  the whole Surah from the public quranicaudio.com archive (Mishary Rashid Alafasy), and the
+  screen says so. An HTML5 audio player was chosen over a YouTube embed: one file per Surah, no
+  iframe, no third-party scripts or cookies. It still means the student's browser loads
+  third-party content. `docker/nginx` sets no Content-Security-Policy today — only
+  `X-Frame-Options: DENY` (which governs who may frame *our* pages) and a `Permissions-Policy`
+  that disables camera, microphone and geolocation — so nothing blocks it; if a CSP is added it
+  needs `media-src https://download.quranicaudio.com`. The URL lives in one file,
+  `frontend/src/lib/recitation.js`. **Not part of the approved requirements:** present it as a
+  prototype, and replace it with self-hosted recordings or remove it before a real deployment.
+
+### 11.3 Forecast clarity and assumptions (FR10, UC13)
+
+- **The caveat** under the expected date, in the supervisor's words: *"ملاحظة: هذا التوقع مبدئي
+  ويعتمد على البيانات المسجلة، وتزداد دقته كلما زادت جلسات التسميع (يوصى بـ 4 جلسات على
+  الأقل)."* The 4 is not typed into the sentence: it is `forecast_min_sessions` in
+  `system_setting` (rule 8), and a student below it is flagged on the card.
+- **The assumptions — decision: request parameters the API and the ML service honour, not a
+  client-side what-if.** A calculation in the browser would have been a second forecasting
+  formula outside FR10's ML path. Instead `GET /api/students/{id}/prediction` accepts
+  `scope_from` / `scope_to` (Juz 1–30) and `pace` (`recorded`, `new`, `review`, `fast`):
+  - the scope becomes `remaining_pages`, read the way the journey map reads progress (Juz before
+    the current one complete, the current one `pages_in_current_juz` along). The current-Juz
+    scope reproduces exactly the remaining pages the stored forecast is made from;
+  - a baseline pace replaces the recorded momentum in the same `/forecast` call;
+  - **nothing is stored:** no `prediction` row (that history holds only forecasts made from what
+    was recorded, §2.9) and no change to the UC13 staleness flag — a what-if that fails is not a
+    failed update;
+  - **when the ML service is unreachable** the answer falls back to the naïve baseline of the
+    NFR10 protocol (§5: remaining pages ÷ pages per week) and is labelled `source: "estimate"`
+    on screen, so an estimate is never shown as the model's forecast. With no recorded pace and
+    no model there is no date at all, rather than an invented one.
+- **The baseline paces are provisional constants in `system_setting`** (§2): `pace_new` = 1,
+  `pace_review` = 5 (the two values the supervisor named) and `pace_fast` = 10 — the third is
+  *our* provisional choice (two pages a day, five days a week), not a figure from the review.
+  Each has a validated range (UC3) and is editable on the System settings page.
+- **Who sees what.** Students see the caveat and the scope (current Juz, whole Quran, or a range
+  such as Juz 8 to 10). The pace selector is shown to teachers and the Circle Supervisor, as the
+  review asked. The API accepts `pace` from anyone who may already read that forecast, because
+  it changes nothing stored; the access check is the existing `requireStudentAccess`.
+- **No accuracy claim.** NFR10 is untouched and still unmeasured on real data (§5). No scenario
+  figure may be presented as a measured result.
+
+### 11.4 Tests
+
+`ForecastAssumptionsTest` (8 tests) pins that a scenario goes to the ML service with the scope's
+pages and the stored pace, writes no prediction row and leaves the staleness flag alone, falls
+back to a labelled estimate, gives no date without a pace, refuses invalid scopes, keeps the
+FR16 boundary, and that the paces are range-checked settings. `DashboardSummaryTest` (5 tests)
+pins the weekly attendance series (window, null weeks, present/absent/excused, teacher scope,
+suspended students), the averages that leave out new students, the `null` averages, and the
+roster's `sessions_count`.
+
+Run on this branch, PHP 8.3.33, 2026-10-18: `php artisan test` — **158 passed (1069 assertions)**,
+against 145 passed (966) on `main` before the change. `node scripts/check_locales.js`: parity
+OK, 367 keys in each language. `npm run lint` clean; `npm run build` clean. Checked by hand in the
+running demo (`scripts/dev_up.sh`) as supervisor, teacher and student: Arabic (RTL) at desktop
+width and at 375 px, English at 375 px, and dark mode at 375 px. The live ML forecast was not exercised — the demo
+path does not start the ML container — so the `source: "model"` branch of a scenario is covered
+by the tests only.

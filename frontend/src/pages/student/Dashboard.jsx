@@ -43,7 +43,7 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-        <ForecastCard pred={pred} />
+        <ForecastCard pred={pred} studentId={id} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
     </div>
