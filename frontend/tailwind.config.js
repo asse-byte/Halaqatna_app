@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `hsl(var(--${name}) / <alpha-value>)`;
+
 module.exports = {
   blocklist: ["overline"],
   darkMode: ["class"],
@@ -6,30 +8,40 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-sans)", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "serif"],
         quran: ["Amiri", "Scheherazade New", "serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
-      borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
+      borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 3px)" },
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },
-        popover: { DEFAULT: "hsl(var(--popover))", foreground: "hsl(var(--popover-foreground))" },
-        primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
-        secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },
-        muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
-        accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },
-        destructive: { DEFAULT: "hsl(var(--destructive))", foreground: "hsl(var(--destructive-foreground))" },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        gold: { DEFAULT: "#D97706", hover: "#B45309" },
+        background: token("background"),
+        foreground: token("foreground"),
+        card: { DEFAULT: token("card"), foreground: token("card-foreground") },
+        popover: { DEFAULT: token("popover"), foreground: token("popover-foreground") },
+        primary: { DEFAULT: token("primary"), foreground: token("primary-foreground") },
+        secondary: { DEFAULT: token("secondary"), foreground: token("secondary-foreground") },
+        muted: { DEFAULT: token("muted"), foreground: token("muted-foreground") },
+        accent: { DEFAULT: token("accent"), foreground: token("accent-foreground") },
+        destructive: { DEFAULT: token("destructive"), foreground: token("destructive-foreground") },
+        sidebar: token("sidebar"),
+        border: token("border"),
+        input: token("input"),
+        ring: token("ring"),
+        success: token("success"),
+        warning: token("warning"),
+        danger: token("destructive"),
+        gold: { DEFAULT: token("gold"), ink: token("gold-ink") },
+        // The Mastery bands as chart fills. Checked with the dataviz palette validator against
+        // the card surface in each mode (lightness band, chroma, colour-blind separation).
+        band: {
+          EXCELLENT: "var(--band-excellent)",
+          STRONG: "var(--band-strong)",
+          DEVELOPING: "var(--band-developing)",
+          NEEDS_WORK: "var(--band-needs-work)",
+          NO_DATA: "var(--band-no-data)",
+        },
       },
-      keyframes: {
-        rise: { from: { opacity: "0", transform: "translateY(12px)" }, to: { opacity: "1", transform: "translateY(0)" } },
-      },
-      animation: { rise: "rise 0.5s cubic-bezier(.2,.8,.2,1) both" },
     },
   },
   plugins: [],

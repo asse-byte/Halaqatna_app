@@ -50,7 +50,7 @@ export default function Attendance() {
     <div className="mx-auto w-full max-w-2xl" data-testid="attendance-page">
       <PageTitle title={t("attendance_title")} subtitle={t("attendance_subtitle")} />
 
-      <div className="glass mb-4 flex flex-wrap items-end gap-3 rounded-2xl p-4">
+      <div className="panel mb-4 flex flex-wrap items-end gap-3 rounded-lg p-4">
         <div className="flex-1 min-w-[12rem]">
           <Field label={t("session_date")}>
             <input data-testid="attendance-date" className={inputCls} type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value)} />
@@ -62,11 +62,11 @@ export default function Attendance() {
       </div>
 
       {rows === null && <div className="text-muted-foreground">{t("loading")}</div>}
-      {rows?.length === 0 && <div className="glass rounded-2xl p-6 text-center text-sm text-muted-foreground">{t("no_students_yet")}</div>}
+      {rows?.length === 0 && <div className="panel rounded-lg p-6 text-center text-sm text-muted-foreground">{t("no_students_yet")}</div>}
 
-      <div className="space-y-2">
+      <div className={rows?.length ? "panel divide-y divide-border/70 rounded-lg" : ""}>
         {rows?.map((r) => (
-          <div key={r.student_id} data-testid={`attendance-row-${r.student_id}`} className="glass flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
+          <div key={r.student_id} data-testid={`attendance-row-${r.student_id}`} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <div className="truncate font-semibold">{r.name}</div>
               <div className="text-[11px] text-muted-foreground">
@@ -74,10 +74,10 @@ export default function Attendance() {
                 {r.has_recitation && <span className="ms-2">· {t("has_recitation")}</span>}
               </div>
             </div>
-            <div className="flex gap-1.5">
+            <div className="inline-flex gap-0.5 rounded-md border border-input bg-background p-0.5" role="radiogroup" aria-label={r.name}>
               {STATUSES.map((s) => (
-                <button key={s} type="button" data-testid={`att-${r.student_id}-${s}`} onClick={() => set(r.student_id, s)}
-                  className={`chip border ${ATT_STYLES[s]} ${r.attendance_status === s ? "ring-2 ring-primary" : "opacity-60"}`}>
+                <button key={s} type="button" role="radio" aria-checked={r.attendance_status === s} data-testid={`att-${r.student_id}-${s}`} onClick={() => set(r.student_id, s)}
+                  className={`chip !rounded-[4px] border font-semibold ${r.attendance_status === s ? ATT_STYLES[s] : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
                   {t(`att_${s}`)}
                 </button>
               ))}
@@ -87,8 +87,8 @@ export default function Attendance() {
       </div>
 
       {rows?.length > 0 && (
-        <div className="sticky bottom-20 mt-5 md:bottom-0 md:mt-6">
-          <button className={`${btnPrimary} w-full py-3 shadow-xl`} data-testid="save-attendance" onClick={save} disabled={busy}>
+        <div className="sticky bottom-[3.75rem] z-10 -mx-4 mt-5 border-t border-border bg-background px-4 py-3 sm:-mx-6 sm:px-6 md:bottom-0 md:mx-0 md:mt-6 md:px-0">
+          <button className={`${btnPrimary} w-full !py-3`} data-testid="save-attendance" onClick={save} disabled={busy}>
             <Save size={16} />{busy ? t("saving") : t("save_attendance")}
           </button>
         </div>

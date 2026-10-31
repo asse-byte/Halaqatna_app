@@ -58,7 +58,7 @@ export default function CircleAdmins() {
             <td className="px-4 py-3 text-xs" dir="ltr">{u.phone || "—"}</td>
             <td className="px-4 py-3">{u.circle_name}</td>
             <td className="px-4 py-3">
-              <span className={`chip !min-h-0 ${u.is_active ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" : "border-red-300 text-red-700 dark:text-red-400"}`}>
+              <span className={`chip !min-h-0 ${u.is_active ? "border-success/35 text-success" : "border-destructive/35 text-destructive"}`}>
                 {u.is_active ? t("active") : t("suspended")}
               </span>
             </td>

@@ -5,11 +5,11 @@ import { FileDown } from "lucide-react";
 import { api, errMsg, openPdf } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { btnPrimary, Dash, MetricCard, NewBadge, PageTitle, Table } from "../../components/ui-kit";
+import { btnPrimary, Dash, Figures, MetricCard, NewBadge, PageTitle, Table } from "../../components/ui-kit";
 
 const TREND_TONE = {
-  UP: "text-emerald-600 dark:text-emerald-400",
-  DOWN: "text-red-600 dark:text-red-400",
+  UP: "text-success",
+  DOWN: "text-destructive",
   STEADY: "text-muted-foreground",
   NEW: "text-muted-foreground",
 };
@@ -36,15 +36,15 @@ export default function CircleReport() {
       </PageTitle>
 
       {s && (
-        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+        <Figures className="mb-8 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
           <MetricCard label={t("students")} value={s.students} testId="report-students" />
-          <MetricCard label={t("sessions")} value={s.sessions} testId="report-sessions" delay={40} />
-          <MetricCard label={t("pages")} value={s.total_pages} testId="report-pages" delay={80} />
-          <MetricCard label={t("avg_mastery")} value={s.avg_mastery} unit="/100" hint={t("mastery_hint")} compact testId="report-avg-mastery" delay={120} />
-          <MetricCard label={t("avg_momentum")} value={s.avg_momentum} unit={t("pages_per_week")} hint={t("momentum_hint")} compact testId="report-avg-momentum" delay={160} />
-          <MetricCard label={t("avg_precision")} value={s.avg_precision} unit="%" hint={t("precision_hint")} compact testId="report-avg-precision" delay={200} />
-          <MetricCard label={t("avg_consistency")} value={s.avg_consistency} unit="%" hint={t("consistency_hint")} compact testId="report-avg-consistency" delay={240} />
-        </div>
+          <MetricCard label={t("sessions")} value={s.sessions} testId="report-sessions" />
+          <MetricCard label={t("pages")} value={s.total_pages} testId="report-pages" />
+          <MetricCard label={t("avg_mastery")} value={s.avg_mastery} unit="/100" hint={t("mastery_hint")} compact testId="report-avg-mastery" />
+          <MetricCard label={t("avg_momentum")} value={s.avg_momentum} unit={t("pages_per_week")} hint={t("momentum_hint")} compact testId="report-avg-momentum" />
+          <MetricCard label={t("avg_precision")} value={s.avg_precision} unit="%" hint={t("precision_hint")} compact testId="report-avg-precision" />
+          <MetricCard label={t("avg_consistency")} value={s.avg_consistency} unit="%" hint={t("consistency_hint")} compact testId="report-avg-consistency" />
+        </Figures>
       )}
 
       <Table

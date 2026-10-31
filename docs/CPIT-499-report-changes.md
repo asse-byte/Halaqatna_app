@@ -519,3 +519,31 @@ running demo (`scripts/dev_up.sh`) as supervisor, teacher and student: Arabic (R
 width and at 375 px, English at 375 px, and dark mode at 375 px. The live ML forecast was not exercised — the demo
 path does not start the ML container — so the `source: "model"` branch of a scenario is covered
 by the tests only.
+
+## 12. Visual redesign of the web client
+
+The project owner judged the web client's look generic — glass panels, gradients, staggered
+fade-ins, a stock photograph — and asked for a complete redesign. This is presentation only:
+no endpoint, query, formula, requirement or table changed, every screen keeps its `data-testid`
+hooks, and the mobile client is untouched apart from the two new shared strings.
+
+| Change | Where | Position |
+|---|---|---|
+| **Theme.** Paper and ink surfaces separated by hairline rules instead of blurred glass and drop shadows; lapis as the one action colour; illumination gold kept for what a student has completed (a Juz, a Surah, a badge, XP). Success, warning and danger are theme tokens, and dark mode has its own steps rather than an inverted copy. | `frontend/src/index.css`, `frontend/tailwind.config.js` | Presentation. |
+| **Type.** IBM Plex Sans Arabic for the interface (its Arabic and Latin share one design), Noto Naskh Arabic / IBM Plex Serif for headings, Amiri for Quranic text, IBM Plex Mono for access codes. Replaces Cairo, Plus Jakarta Sans and JetBrains Mono; the fonts still come from Google Fonts, so no new external origin. | `frontend/index.html` | Presentation. |
+| **Mark.** The rub el hizb star — the sign the Mushaf prints at each quarter of a hizb — as the logo and favicon, and as a lattice behind the sign-in panel. Replaces the letter tile and the Unsplash photograph, so the sign-in page no longer loads a third-party image. | `frontend/src/components/Brand.jsx`, `frontend/public/favicon.svg` | Presentation. |
+| **Figures.** The rows of separate metric cards become one ruled frame. Mastery is drawn on a 0–100 scale cut at the band floors, which `lib/mastery.js` now exports (`BAND_FLOORS`) so the scale and the band word use the same thresholds as `MasteryBand` on the server (90 / 75 / 50). | `ui-kit.jsx`, `lib/mastery.js` | Presentation of FR7. |
+| **Progress chart.** The level line and the weekly page bars shared one frame although they are two scales (a 0–100 score and a page count). They are now two strips on one time axis, with a hover/focus readout and a screen-reader table. | `ui-kit.jsx` (`TrendChart`) | Presentation of FR8. |
+| **Band colours.** The fills for the Mastery bands were checked with the dataviz palette validator against the card surface in each mode (lightness band, chroma floor, colour-blind and normal-vision separation): light `#16754A #62AE72 #D98E1E #BF3B2B`, dark `#22A58C #357A2E #C2852A #B8433A`. Every bar is also labelled with its word and count. | `index.css` (`--band-*`) | Presentation of FR14. |
+| **Dates.** The forecast and badge dates are written out ("12 March 2027", Western digits as elsewhere), with the ISO date kept as a tooltip. | `lib/dates.js` (`longDate`) | Presentation of FR10. |
+| **Motion.** Staggered rise animations, pulsing rings and hover lifts removed; a small script in `index.html` applies the saved theme and direction before the first paint, so a dark or English page no longer flashes light or right-to-left on reload. | `index.html` | Presentation. |
+
+New strings: `close` (the dialog's close button) and `verse_ref` (the reference under the verse
+on the sign-in panel), in Arabic and English.
+
+Checked on `feat/redesign`, 2026-10-31: `npm run lint` clean, `npm run build` clean,
+`node scripts/check_locales.js` parity OK with 369 keys in each language, the offline-queue
+check 9/9. `php artisan test` was not re-run: nothing under `api/` changed. Checked by hand in the
+running demo (`scripts/dev_up.sh`): Arabic at 1280 px as supervisor, teacher, student and system
+administrator; Arabic at 375 px (sign-in, overview, student page, Juz map) with no horizontal
+overflow; dark mode at 375 px and 1280 px; English at 1280 px.

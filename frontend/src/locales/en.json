@@ -1,6 +1,7 @@
 {
   "app_name": "Halaqtna",
   "tagline": "A smart Quran memorization circle management system",
+  "verse_ref": "Al-Qamar 54:17",
   "staff_login": "Teacher and supervisor sign in",
   "student_login": "Student sign in",
   "email": "Email",
@@ -59,6 +60,7 @@
   "staff": "Teachers and supervisors",
   "save": "Save",
   "cancel": "Cancel",
+  "close": "Close",
   "edit": "Edit",
   "create": "Create",
   "created": "Created",

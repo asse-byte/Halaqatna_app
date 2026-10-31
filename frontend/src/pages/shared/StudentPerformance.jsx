@@ -109,7 +109,7 @@ export default function StudentPerformance() {
       </PageTitle>
 
       {staff && (
-        <div className="glass mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl px-4 py-3 text-sm" data-testid="access-code-panel">
+        <div className="panel mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg px-4 py-3 text-sm" data-testid="access-code-panel">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">{t("access_code")}</span>
             <span className="font-mono text-lg font-bold tracking-[0.25em]" dir="ltr" data-testid="perf-access-code">{student.access_code}</span>
@@ -118,7 +118,7 @@ export default function StudentPerformance() {
             </button>
           </div>
           {rotationDue && (
-            <span className={`text-xs ${rotationDue.overdue ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} data-testid="code-rotation-due">
+            <span className={`text-xs ${rotationDue.overdue ? "font-semibold text-warning" : "text-muted-foreground"}`} data-testid="code-rotation-due">
               {rotationDue.overdue ? t("access_code_renew_due") : `${t("access_code_valid_until")} ${rotationDue.date}`}
             </span>
           )}
@@ -128,12 +128,12 @@ export default function StudentPerformance() {
 
       <MetricPanel m={m} compact />
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
+      <div className="mt-6 grid items-start gap-4 lg:grid-cols-[1fr_1.5fr]">
         <ForecastCard pred={pred} studentId={id} canSetPace={staff} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
 
-      <h2 className="eyebrow mb-2 mt-8">{t("history")}</h2>
+      <h2 className="panel-title mb-3 mt-10">{t("history")}</h2>
       <Table
         head={[t("date"), t("attendance"), t("session_type"), t("range"), t("pages"), t("errors"), t("accuracy"), t("teacher"), ""]}
         testId="sessions-table"
