@@ -6,7 +6,7 @@ the student each row belongs to — the P10 evaluation must split by STUDENT, no
 """
 import os
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 
 import numpy as np
 from sqlalchemy import create_engine, text
@@ -37,40 +37,62 @@ def fetch_sessions():
         return conn.execute(sql).mappings().all()
 
 
-def build_training_set(with_meta: bool = False):
-    """Returns (X, y) or, with_meta, (X, y, student_ids, avg_pages_per_week_to_date, sessions_to_date)."""
+def _as_date(value) -> date:
+    """MySQL returns a date, SQLite (the demo path) returns its text."""
+    return value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
+
+
+def student_weeks(sess) -> list[dict]:
+    """One student's sessions as weeks, each with the three features as they stood at its end."""
+    weeks = defaultdict(lambda: {"pages": 0.0, "load": 0.0, "n": 0, "att": 0})
+    for r in sess:
+        d = _as_date(r["session_date"])
+        w = weeks[d - timedelta(days=d.weekday())]
+        w["pages"] += float(r["pages_memorized"])
+        w["load"] += float(r["load_w"])
+        w["n"] += 1
+        w["att"] += 1 if r["attendance_status"] in ("P", "L") else 0
+
+    out = []
+    ewma, n_tot, att_tot, pages_tot, load_tot = None, 0, 0, 0.0, 0.0
+    for i, k in enumerate(sorted(weeks)):
+        w = weeks[k]
+        ewma = w["pages"] if ewma is None else ALPHA * w["pages"] + (1 - ALPHA) * ewma
+        n_tot += w["n"]; att_tot += w["att"]; pages_tot += w["pages"]; load_tot += w["load"]
+        density = load_tot / pages_tot if pages_tot > 0 else 0.0
+        out.append({
+            "features": [ewma, density, att_tot / n_tot if n_tot else 0.0],
+            "pages": w["pages"],
+            # The P10 naïve baseline: average pages per week to date, no model at all.
+            "avg_ppw": pages_tot / (i + 1),
+            "sessions_to_date": n_tot,
+        })
+    return out
+
+
+def training_rows(rows):
+    """(X, y, student_ids, avg_pages_per_week_to_date, sessions_to_date) from session rows."""
     by_student = defaultdict(list)
-    for r in fetch_sessions():
+    for r in rows:
         by_student[r["student_id"]].append(r)
 
     X, y, students, avg_ppw, sessions_to_date = [], [], [], [], []
     for sid, sess in by_student.items():
-        weeks = defaultdict(lambda: {"pages": 0.0, "load": 0.0, "n": 0, "att": 0})
-        for r in sess:
-            wk = r["session_date"] - timedelta(days=r["session_date"].weekday())
-            w = weeks[wk]
-            w["pages"] += float(r["pages_memorized"])
-            w["load"] += float(r["load_w"])
-            w["n"] += 1
-            w["att"] += 1 if r["attendance_status"] in ("P", "L") else 0
+        weeks = student_weeks(sess)
+        for week, following in zip(weeks, weeks[1:]):
+            X.append(week["features"])
+            y.append(following["pages"])
+            students.append(sid)
+            avg_ppw.append(week["avg_ppw"])
+            sessions_to_date.append(week["sessions_to_date"])
 
-        keys = sorted(weeks)
-        ewma, n_tot, att_tot, pages_tot, load_tot = None, 0, 0, 0.0, 0.0
-        for i, k in enumerate(keys):
-            w = weeks[k]
-            ewma = w["pages"] if ewma is None else ALPHA * w["pages"] + (1 - ALPHA) * ewma
-            n_tot += w["n"]; att_tot += w["att"]; pages_tot += w["pages"]; load_tot += w["load"]
-            if i + 1 < len(keys):
-                density = load_tot / pages_tot if pages_tot > 0 else 0.0
-                X.append([ewma, density, att_tot / n_tot if n_tot else 0.0])
-                y.append(weeks[keys[i + 1]]["pages"])
-                students.append(sid)
-                # The P10 naïve baseline: average pages per week to date, no model at all.
-                avg_ppw.append(pages_tot / (i + 1))
-                sessions_to_date.append(n_tot)
+    return (np.array(X, dtype=float), np.array(y, dtype=float), np.array(students),
+            np.array(avg_ppw, dtype=float), np.array(sessions_to_date, dtype=int))
 
-    X = np.array(X, dtype=float)
-    y = np.array(y, dtype=float)
+
+def build_training_set(with_meta: bool = False):
+    """Returns (X, y) or, with_meta, (X, y, student_ids, avg_pages_per_week_to_date, sessions_to_date)."""
+    X, y, students, avg_ppw, sessions_to_date = training_rows(fetch_sessions())
     if not with_meta:
         return X, y
-    return X, y, np.array(students), np.array(avg_ppw, dtype=float), np.array(sessions_to_date, dtype=int)
+    return X, y, students, avg_ppw, sessions_to_date

@@ -21,7 +21,8 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "check:locales": "node ../scripts/check_locales.js",
-    "check:offline": "node --test ../scripts/check_offline_queue.mjs"
+    "check:offline": "node --test ../scripts/check_offline_queue.mjs",
+    "check:juz": "node --test ../scripts/check_juz_map.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

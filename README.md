@@ -181,7 +181,7 @@ GET    /api/surahs                     FR5    114 Surahs with names and ayah cou
 POST   /api/sessions                   FR4, FR5, FR6   body includes errors[]
 PUT    /api/sessions/{id}              FR5, FR6, FR18  correct a session; XP settled by an ADJUST entry
 GET    /api/students/{id}/metrics      FR7, FR8, FR9
-GET    /api/students/{id}/prediction   FR10
+GET    /api/students/{id}/prediction   FR10   optional scope_from, scope_to, pace — a what-if, never stored (docs §11.3)
 GET    /api/circles/{id}/leaderboard?criterion=momentum|precision|consistency|review_depth   FR11
 GET    /api/students/{id}/badges       FR12
 GET    /api/students/{id}/xp           FR13

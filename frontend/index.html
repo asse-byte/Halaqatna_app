@@ -3,9 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F4F1E8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121517" media="(prefers-color-scheme: dark)" />
     <title>Halaqtna · حلقتنا</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Theme and direction before the first paint, so a dark or English page never flashes light/RTL. -->
+    <script>
+      try {
+        if (localStorage.getItem("halaqtna_theme") === "dark") document.documentElement.classList.add("dark");
+        if (localStorage.getItem("halaqtna_locale") === "en") { document.documentElement.lang = "en"; document.documentElement.dir = "ltr"; }
+      } catch (e) { /* storage blocked: the app applies both once it mounts */ }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700&family=Cairo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&family=Noto+Naskh+Arabic:wght@500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

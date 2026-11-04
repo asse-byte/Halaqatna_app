@@ -2,69 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Halaqtna's look is taken from the two objects every halaqa already has on the table: the
+ * register a teacher writes in and the page of the Mushaf. Paper and ink for the surfaces,
+ * hairline rules instead of shadows, lapis for the one action colour and illumination gold
+ * kept for what a student has completed. Headings are set in Naskh (Arabic) and Plex Serif
+ * (English); everything else in IBM Plex Sans Arabic, whose Latin and Arabic share one
+ * design, so a page that mixes the two scripts reads as one voice.
+ */
 @layer base {
   :root {
-    --font-sans: "Plus Jakarta Sans";
-    --background: 40 43% 98%;
-    --foreground: 160 40% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 160 40% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 160 40% 10%;
-    --primary: 162 58% 14%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 175 61% 19%;
-    --secondary-foreground: 138 76% 97%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 19% 35%;
-    --accent: 33 95% 44%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 88%;
-    --ring: 162 58% 14%;
-    --radius: 0.9rem;
+    --font-sans: "IBM Plex Sans Arabic";
+    --font-display: "IBM Plex Serif", "Noto Naskh Arabic";
+
+    --background: 45 35% 93%;      /* paper #F4F1E8 */
+    --foreground: 156 9% 11%;      /* ink #1A1F1D */
+    --card: 48 38% 97%;            /* sheet #FBFAF6 */
+    --card-foreground: 156 9% 11%;
+    --popover: 48 38% 97%;
+    --popover-foreground: 156 9% 11%;
+    --sidebar: 44 31% 91%;
+    --primary: 214 52% 25%;        /* lapis #1E3A5F */
+    --primary-foreground: 43 47% 95%;
+    --secondary: 214 53% 39%;      /* lapis, chart step #2F5D9A */
+    --secondary-foreground: 43 47% 95%;
+    --muted: 43 32% 89%;
+    --muted-foreground: 130 3% 37%;
+    --accent: 38 58% 42%;
+    --accent-foreground: 43 47% 95%;
+    --destructive: 5 58% 40%;      /* madder #A3352B */
+    --destructive-foreground: 43 47% 95%;
+    --success: 145 39% 30%;        /* #2F6B48 */
+    --warning: 24 71% 38%;         /* burnt sienna #A8541C */
+    --gold: 38 58% 42%;            /* illumination gold #A87B2C */
+    --gold-ink: 38 63% 32%;        /* the same gold dark enough for text */
+    --border: 42 25% 82%;
+    --input: 42 21% 75%;
+    --ring: 214 52% 25%;
+    --radius: 0.375rem;
+
+    --band-excellent: #16754A;
+    --band-strong: #62AE72;
+    --band-developing: #D98E1E;
+    --band-needs-work: #BF3B2B;
+    --band-no-data: #CFC8B8;
   }
   .dark {
-    --background: 160 60% 6%;
-    --foreground: 150 30% 94%;
-    --card: 158 50% 9%;
-    --card-foreground: 150 30% 94%;
-    --popover: 158 50% 9%;
-    --popover-foreground: 150 30% 94%;
-    --primary: 160 84% 39%;
-    --primary-foreground: 160 60% 6%;
-    --secondary: 161 94% 30%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 38 92% 50%;
-    --accent-foreground: 160 60% 6%;
-    --destructive: 0 63% 40%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 158 40% 17%;
-    --input: 158 40% 20%;
-    --ring: 160 84% 39%;
+    --background: 204 12% 8%;      /* #121517 */
+    --foreground: 44 25% 88%;
+    --card: 206 13% 11%;           /* #181C1F */
+    --card-foreground: 44 25% 88%;
+    --popover: 206 13% 11%;
+    --popover-foreground: 44 25% 88%;
+    --sidebar: 204 15% 6%;
+    --primary: 214 60% 73%;
+    --primary-foreground: 204 12% 8%;
+    --secondary: 216 59% 60%;
+    --secondary-foreground: 204 12% 8%;
+    --muted: 204 14% 15%;
+    --muted-foreground: 137 4% 62%;
+    --accent: 41 55% 60%;
+    --accent-foreground: 204 12% 8%;
+    --destructive: 8 69% 67%;
+    --destructive-foreground: 204 12% 8%;
+    --success: 144 31% 60%;
+    --warning: 25 68% 62%;
+    --gold: 41 55% 60%;
+    --gold-ink: 41 62% 66%;
+    --border: 202 11% 19%;
+    --input: 203 10% 25%;
+    --ring: 214 60% 73%;
+
+    --band-excellent: #22A58C;
+    --band-strong: #357A2E;
+    --band-developing: #C2852A;
+    --band-needs-work: #B8433A;
+    --band-no-data: #3A4247;
   }
-  html[dir="rtl"] { --font-sans: "Cairo"; }
+  html[dir="rtl"] { --font-display: "Noto Naskh Arabic", "IBM Plex Serif"; }
+
   * { @apply border-border; }
-  html { scroll-padding-bottom: 140px; }
+  html { scroll-padding-bottom: 140px; -webkit-text-size-adjust: 100%; }
   html, body, #root { min-height: 100%; }
   body {
     @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;
-    background-image: radial-gradient(hsl(var(--primary) / 0.05) 1px, transparent 1px);
-    background-size: 22px 22px;
+    font-feature-settings: "kern", "liga";
   }
-  ::selection { background: hsl(var(--accent) / 0.35); }
+  h1, h2, h3 { text-wrap: balance; }
+  ::selection { background: hsl(var(--gold) / 0.28); }
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  button:focus:not(:focus-visible) { outline: none; }
 }
 
 @layer components {
-  .glass { @apply bg-card/80 backdrop-blur-xl border border-border/70 shadow-[0_1px_0_hsl(var(--border)),0_12px_40px_-20px_hsl(var(--primary)/0.35)]; }
-  .eyebrow { @apply text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground; }
-  .metric-number { @apply font-mono text-3xl sm:text-4xl font-semibold tabular-nums text-primary dark:text-primary; }
-  .chip { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors min-h-[44px] sm:min-h-0; }
-  .nav-link { @apply flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground; }
-  .nav-link.active { @apply bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground; }
-  .code-display { @apply font-mono tracking-[0.35em] text-2xl sm:text-3xl font-semibold text-primary; }
+  /* A sheet: flat, ruled, no shadow and no blur. */
+  .panel { @apply border border-border bg-card; }
+  .panel-title { @apply font-display text-[17px] font-semibold leading-snug text-foreground; }
+  .eyebrow { @apply text-[13px] font-medium text-muted-foreground; }
+  .metric-number { @apply text-[28px] font-semibold leading-none tabular-nums tracking-tight text-foreground sm:text-[32px]; }
+  .chip { @apply inline-flex min-h-[44px] items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors sm:min-h-0 sm:text-[13px]; }
+  .nav-link {
+    @apply relative flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground;
+  }
+  .nav-link.active { @apply bg-card font-semibold text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))]; }
+  .nav-link.active::before {
+    content: "";
+    @apply absolute inset-y-2 start-0 w-[3px] rounded-full bg-primary;
+  }
+  .code-display { @apply font-mono text-2xl font-medium tracking-[0.3em] text-foreground sm:text-3xl; }
+  /* A row of figures sharing one frame, divided by hairlines like the columns of a register. */
+  .figures { @apply grid overflow-hidden rounded-lg border border-border bg-card; }
+  .figures > * { @apply -mb-px -me-px border-b border-e border-border; }
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Trophy } from "lucide-react";
 import { api } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
 import { PageTitle } from "../../components/ui-kit";
+import { StarMark } from "../../components/Brand";
 
 const CRITERIA = ["momentum", "precision", "consistency", "review_depth"];
 
@@ -35,29 +35,29 @@ export default function Leaderboard() {
     <div>
       <PageTitle title={t("leaderboard_title")} subtitle={t("leaderboard_note")} />
 
-      <div className="mb-3 flex flex-wrap gap-2" role="tablist">
+      <div className="mb-3 flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_hsl(var(--border))]" role="tablist">
         {CRITERIA.map((c) => (
           <button key={c} role="tab" data-testid={`leaderboard-tab-${c}`} aria-selected={criterion === c} onClick={() => setCriterion(c)}
-            className={`chip ${criterion === c ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-primary/10"}`}>
+            className={`min-h-[44px] whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:min-h-0 ${criterion === c ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
             {t(c)}
           </button>
         ))}
       </div>
       <p className="mb-5 max-w-2xl text-xs leading-relaxed text-muted-foreground" data-testid="criterion-hint">{t(`${criterion}_hint`)}</p>
 
-      <div className="glass max-w-2xl divide-y divide-border/60 rounded-2xl" data-testid="leaderboard-list">
+      <div className="panel max-w-2xl divide-y divide-border/70 rounded-lg" data-testid="leaderboard-list">
         {rows === null && <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>}
         {rows?.length === 0 && <div className="p-6 text-sm text-muted-foreground">{t("no_data")}</div>}
-        {rows?.map((r, i) => (
-          <div key={r.student_id} data-testid={`leaderboard-row-${r.rank}`} className={`flex items-center gap-4 px-4 py-3 animate-rise ${me === r.student_id ? "bg-gold/10" : ""}`} style={{ animationDelay: `${i * 40}ms` }}>
-            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono font-bold ${r.rank === 1 ? "bg-gold text-white" : r.rank <= 3 ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
-              {r.rank === 1 ? <Trophy size={16} /> : r.rank}
+        {rows?.map((r) => (
+          <div key={r.student_id} data-testid={`leaderboard-row-${r.rank}`} className={`relative flex items-center gap-4 px-4 py-3 ${me === r.student_id ? "bg-primary/[0.05] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-primary" : ""}`}>
+            <div className={`w-8 shrink-0 text-center font-display text-xl font-semibold tabular-nums ${r.rank <= 3 ? "text-foreground" : "text-muted-foreground"}`}>
+              {r.rank === 1 ? <StarMark size={20} className="mx-auto text-gold" /> : r.rank}
             </div>
             <div className="min-w-0 flex-1 truncate font-semibold">
-              {r.name}{me === r.student_id && <span className="ms-2 text-xs text-gold">({t("you")})</span>}
+              {r.name}{me === r.student_id && <span className="ms-2 text-xs font-medium text-primary">({t("you")})</span>}
             </div>
-            <div className="shrink-0 font-mono text-lg font-semibold text-primary">
-              {r.value}<span className="ms-1 text-xs font-sans text-muted-foreground">{unit}</span>
+            <div className="shrink-0 text-lg font-semibold tabular-nums">
+              {r.value}<span className="ms-1 text-xs font-normal text-muted-foreground">{unit}</span>
             </div>
           </div>
         ))}

@@ -58,8 +58,8 @@ export default function MyAccount() {
     <div className="mx-auto w-full max-w-2xl" data-testid="my-account-page">
       <PageTitle title={t("account_title")} subtitle={t("account_subtitle")} />
 
-      <form onSubmit={saveProfile} className="glass space-y-4 rounded-2xl p-5" data-testid="profile-form">
-        <h2 className="eyebrow">{t("my_details")}</h2>
+      <form onSubmit={saveProfile} className="panel space-y-4 rounded-lg p-5" data-testid="profile-form">
+        <h2 className="panel-title">{t("my_details")}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t("full_name")}>
             <input data-testid="profile-name" className={inputCls} value={me.name || ""} onChange={(e) => setMe({ ...me, name: e.target.value })} required />
@@ -88,8 +88,8 @@ export default function MyAccount() {
         </div>
       </form>
 
-      <form onSubmit={savePassword} className="glass mt-5 space-y-4 rounded-2xl p-5" data-testid="password-form">
-        <h2 className="eyebrow">{t("change_password")}</h2>
+      <form onSubmit={savePassword} className="panel mt-5 space-y-4 rounded-lg p-5" data-testid="password-form">
+        <h2 className="panel-title">{t("change_password")}</h2>
         <Field label={t("current_password")}>
           <input data-testid="current-password" className={inputCls} type="password" dir="ltr" autoComplete="current-password"
             value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />

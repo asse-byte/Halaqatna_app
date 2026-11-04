@@ -33,20 +33,20 @@ export default function MyStudents() {
         <Link to="/teacher/log" data-testid="go-log-session-button" className={btnPrimary}><BookOpen size={16} />{t("log_session")}</Link>
       </PageTitle>
 
-      {rows.length === 0 && <div className="glass rounded-2xl p-6 text-center text-sm text-muted-foreground">{t("no_students_yet")}</div>}
+      {rows.length === 0 && <div className="panel rounded-lg p-6 text-center text-sm text-muted-foreground">{t("no_students_yet")}</div>}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((s, i) => (
-          <div key={s.student_id} data-testid={`student-card-${s.student_id}`} className="glass rounded-2xl p-4 animate-rise" style={{ animationDelay: `${i * 40}ms` }}>
+          <div key={s.student_id} data-testid={`student-card-${s.student_id}`} className="panel rounded-lg p-4" style={{ animationDelay: `${i * 40}ms` }}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate font-bold">{s.name}</div>
+                <div className="truncate font-semibold">{s.name}</div>
                 <div className="text-xs text-muted-foreground">{t("juz")} {s.current_juz}{s.circle?.name ? ` · ${s.circle.name}` : ""}</div>
               </div>
-              {!s.is_active && <span className="chip !min-h-0 border-red-300 text-[11px] text-red-700 dark:text-red-400">{t("suspended")}</span>}
+              {!s.is_active && <span className="chip !min-h-0 border-destructive/35 text-[11px] text-destructive">{t("suspended")}</span>}
             </div>
 
-            <div className="mt-3 flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2">
+            <div className="mt-3 flex items-center justify-between rounded-md bg-muted/60 px-3 py-2">
               <span className="text-xs text-muted-foreground">{t("access_code")}</span>
               <span className="font-mono font-semibold tracking-widest" dir="ltr" data-testid={`access-code-${s.student_id}`}>{s.access_code}</span>
               <button data-testid={`regenerate-code-${s.student_id}`} className="text-muted-foreground transition-colors hover:text-primary" onClick={() => setRotating(s)} title={t("regenerate_code")}>

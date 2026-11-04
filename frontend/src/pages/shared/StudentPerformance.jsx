@@ -5,7 +5,8 @@ import { FileDown, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
 import { api, errMsg, openPdf } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, ErrorChip, PageTitle, Table, TrendChart } from "../../components/ui-kit";
+import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, Dash, ErrorChip, PageTitle, Table, TrendChart } from "../../components/ui-kit";
+import { ErrorDonut, LevelLine } from "../../components/SummaryCharts";
 import { MetricPanel } from "../../components/MetricPanel";
 import { ForecastCard } from "../../components/ForecastCard";
 import { SessionEditor } from "../../components/SessionEditor";
@@ -89,6 +90,15 @@ export default function StudentPerformance() {
     return { date: toLocalDate(d), overdue: d < new Date() };
   }, [student]);
 
+  /** This student's mistakes by kind, counted from the history already on the page. */
+  const errorTypes = useMemo(() => {
+    const byCode = new Map();
+    sessions.flatMap((s) => s.errors).forEach(({ error_type: e }) => {
+      if (e) byCode.set(e.code, { ...e, count: (byCode.get(e.code)?.count ?? 0) + 1 });
+    });
+    return [...byCode.values()];
+  }, [sessions]);
+
   if (!student || !m) return <div className="text-muted-foreground">{t("loading")}</div>;
 
   return (
@@ -109,7 +119,7 @@ export default function StudentPerformance() {
       </PageTitle>
 
       {staff && (
-        <div className="glass mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl px-4 py-3 text-sm" data-testid="access-code-panel">
+        <div className="panel mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg px-4 py-3 text-sm" data-testid="access-code-panel">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">{t("access_code")}</span>
             <span className="font-mono text-lg font-bold tracking-[0.25em]" dir="ltr" data-testid="perf-access-code">{student.access_code}</span>
@@ -118,7 +128,7 @@ export default function StudentPerformance() {
             </button>
           </div>
           {rotationDue && (
-            <span className={`text-xs ${rotationDue.overdue ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} data-testid="code-rotation-due">
+            <span className={`text-xs ${rotationDue.overdue ? "font-semibold text-warning" : "text-muted-foreground"}`} data-testid="code-rotation-due">
               {rotationDue.overdue ? t("access_code_renew_due") : `${t("access_code_valid_until")} ${rotationDue.date}`}
             </span>
           )}
@@ -128,12 +138,17 @@ export default function StudentPerformance() {
 
       <MetricPanel m={m} compact />
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-        <ForecastCard pred={pred} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
+      <div className="mt-6 grid items-start gap-4 lg:grid-cols-[1fr_1.5fr]">
+        <ForecastCard pred={pred} studentId={id} canSetPace={staff} onRefresh={() => api.get(`/students/${id}/prediction`, { params: { refresh: 1 } }).then((r) => setPred(r.data)).catch((e) => toast.error(errMsg(e)))} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
 
-      <h2 className="eyebrow mb-2 mt-8">{t("history")}</h2>
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+        <LevelLine points={m.session_levels} />
+        <ErrorDonut items={errorTypes} testId="chart-student-errors" />
+      </div>
+
+      <h2 className="panel-title mb-3 mt-10">{t("history")}</h2>
       <Table
         head={[t("date"), t("attendance"), t("session_type"), t("range"), t("pages"), t("errors"), t("accuracy"), t("teacher"), ""]}
         testId="sessions-table"
@@ -148,10 +163,10 @@ export default function StudentPerformance() {
                 the row happens to carry. */}
             <td className="px-4 py-2 text-xs">{s.surah_from ? t(`type_${s.session_type}`) : "—"}</td>
             <td className="px-4 py-2 text-xs">{s.surah_from ? rangeLabel(s, locale) : "—"}</td>
-            <td className="px-4 py-2">{s.pages_memorized}</td>
+            <td className="px-4 py-2">{Number(s.pages_memorized) ? s.pages_memorized : <Dash />}</td>
             <td className="px-4 py-2">
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-xs text-muted-foreground">{s.error_count}</span>
+                <span className="text-xs">{s.error_count ? <span className="font-semibold">{s.error_count}</span> : <Dash />}</span>
                 {s.errors.map((e) => <ErrorChip key={e.error_id} type={e.error_type} ayahRef={e.ayah_ref} testId={`session-error-${e.error_id}`} />)}
               </div>
             </td>

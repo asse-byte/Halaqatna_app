@@ -5,7 +5,7 @@ import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { btnGhost, btnPrimary, ConfirmDialog, Field, inputCls, Modal, PageTitle, Table } from "../../components/ui-kit";
+import { btnGhost, btnPrimary, ConfirmDialog, Field, inputCls, Modal, NewBadge, PageTitle, Table } from "../../components/ui-kit";
 
 const emptyTeacher = () => ({ kind: "teacher", name: "", email: "", password: "", phone: "", address: "" });
 const emptyStudent = () => ({ kind: "student", name: "", guardian_phone: "", age: "", address: "", current_juz: 1, teacher_ids: [] });
@@ -80,14 +80,14 @@ export default function Roster() {
         <button data-testid="new-student-button" className={btnPrimary} onClick={() => setForm(emptyStudent())}><Plus size={14} />{t("new_student")}</button>
       </PageTitle>
 
-      <h2 className="eyebrow mb-2">{t("teachers")}</h2>
+      <h2 className="panel-title mb-3">{t("teachers")}</h2>
       <Table head={[t("name"), t("email"), t("phone"), t("status"), ""]} testId="teachers-table" empty={t("no_teachers_yet")}>
         {roster?.teachers.map((u) => (
           <tr key={u.user_id} data-testid={`teacher-row-${u.user_id}`}>
             <td className="px-4 py-3 font-semibold">{u.name}</td>
             <td className="px-4 py-3 text-xs" dir="ltr">{u.email}</td>
             <td className="px-4 py-3 text-xs" dir="ltr">{u.phone || "—"}</td>
-            <td className="px-4 py-3"><span className={`chip !min-h-0 ${u.is_active ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" : "border-red-300 text-red-700 dark:text-red-400"}`}>{u.is_active ? t("active") : t("suspended")}</span></td>
+            <td className="px-4 py-3"><span className={`chip !min-h-0 ${u.is_active ? "border-success/35 text-success" : "border-destructive/35 text-destructive"}`}>{u.is_active ? t("active") : t("suspended")}</span></td>
             <td className="px-4 py-3">
               <div className="flex justify-end gap-1">
                 <button data-testid={`edit-teacher-${u.user_id}`} className={btnGhost} title={t("edit")} onClick={() => setForm({ kind: "teacher", ...u, password: "" })}><Pencil size={14} /></button>
@@ -99,12 +99,13 @@ export default function Roster() {
         ))}
       </Table>
 
-      <h2 className="eyebrow mb-2 mt-8">{t("students")}</h2>
+      <h2 className="panel-title mb-3 mt-10">{t("students")}</h2>
       <Table head={[t("name"), t("age"), t("guardian_phone"), t("current_juz"), t("access_code"), t("assigned_teachers"), t("status"), ""]} testId="students-table" empty={t("no_students_yet")}>
         {roster?.students.map((s) => (
           <tr key={s.student_id} data-testid={`student-row-${s.student_id}`}>
             <td className="px-4 py-3 font-semibold">
               <Link to={`/staff/students/${s.student_id}`} className="hover:underline" data-testid={`student-link-${s.student_id}`}>{s.name}</Link>
+              {s.sessions_count === 0 && <NewBadge testId={`roster-new-${s.student_id}`} />}
             </td>
             <td className="px-4 py-3">{s.age ?? "—"}</td>
             <td className="px-4 py-3 text-xs" dir="ltr">{s.guardian_phone || "—"}</td>
@@ -117,7 +118,7 @@ export default function Roster() {
               {s.teachers.map((x) => x.name).join("، ") || "—"}
               <button className="ms-1 text-secondary hover:underline" data-testid={`reassign-${s.student_id}`} onClick={() => setForm({ kind: "assign", student_id: s.student_id, teacher_ids: s.teachers.map((x) => x.user_id) })}>{t("reassign")}</button>
             </td>
-            <td className="px-4 py-3"><span className={`chip !min-h-0 ${s.is_active ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" : "border-red-300 text-red-700 dark:text-red-400"}`}>{s.is_active ? t("active") : t("suspended")}</span></td>
+            <td className="px-4 py-3"><span className={`chip !min-h-0 ${s.is_active ? "border-success/35 text-success" : "border-destructive/35 text-destructive"}`}>{s.is_active ? t("active") : t("suspended")}</span></td>
             <td className="px-4 py-3">
               <div className="flex justify-end gap-1">
                 <button data-testid={`edit-student-${s.student_id}`} className={btnGhost} title={t("edit")} onClick={() => setForm({ kind: "student", ...s, age: s.age ?? "", teacher_ids: s.teachers.map((x) => x.user_id) })}><Pencil size={14} /></button>

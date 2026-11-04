@@ -56,6 +56,32 @@ export const surahName = (n, locale = "ar") => {
 /** Number of ayahs in a Surah — used as the max of the Ayah inputs. */
 export const ayahCount = (n) => SURAHS[n]?.[2] ?? 286;
 
+/**
+ * Where each Juz begins, as [surah, ayah] — the standard thirty-part division of the Madani
+ * mushaf (Hafs). Fixed structure of the text, like the ayah counts above, not a constant to
+ * calibrate. Index 0 is unused so JUZ_STARTS[j] reads as "Juz j".
+ */
+export const JUZ_STARTS = [
+  null,
+  [1, 1], [2, 142], [2, 253], [3, 93], [4, 24], [4, 148], [5, 82], [6, 111], [7, 88], [8, 41],
+  [9, 93], [11, 6], [12, 53], [15, 1], [17, 1], [18, 75], [21, 1], [23, 1], [25, 21], [27, 56],
+  [29, 46], [33, 31], [36, 28], [39, 32], [41, 47], [46, 1], [51, 31], [58, 1], [67, 1], [78, 1],
+];
+
+/** The Surahs in one Juz, each with the ayahs of it that fall inside that Juz. */
+export function surahsInJuz(juz) {
+  const [s0, a0] = JUZ_STARTS[juz];
+  const [s1, a1] = JUZ_STARTS[juz + 1] ?? [115, 1];
+  const out = [];
+  for (let s = s0; s <= Math.min(s1, 114); s++) {
+    const from = s === s0 ? a0 : 1;
+    const to = s === s1 ? a1 - 1 : ayahCount(s);
+    // The next Juz may open on ayah 1 of its first Surah, which then belongs wholly to it.
+    if (to >= from) out.push({ surah: s, from, to, whole: from === 1 && to === ayahCount(s) });
+  }
+  return out;
+}
+
 /** "البقرة ١ – ٥" style range label, with no bare numbers the reader has to decode. */
 export function rangeLabel(s, locale = "ar") {
   if (!s?.surah_from) return "—";

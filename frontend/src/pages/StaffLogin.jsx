@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { homeFor, useAuth } from "../lib/auth";
 import { errMsg } from "../lib/api";
 import { LangThemeToggles } from "../components/Shell";
+import { Seal, StarLattice } from "../components/Brand";
 import { btnPrimary, Field, inputCls } from "../components/ui-kit";
 
 /**
@@ -26,6 +28,51 @@ const DEMO = import.meta.env.DEV
     ].filter(([, em, pw]) => em && pw)
   : [];
 
+const VERSE = "﴿ وَلَقَدْ يَسَّرْنَا الْقُرْآنَ لِلذِّكْرِ ﴾";
+
+/**
+ * The lapis panel both sign-in pages share: the verse, the name, and the star lattice.
+ * `compact` is the band a phone shows above the form in place of the side panel.
+ */
+export function LoginPanel({ className = "", compact = false }) {
+  const { t } = useT();
+  const ground = `relative overflow-hidden bg-primary text-primary-foreground dark:bg-[hsl(214_45%_16%)] dark:text-foreground ${className}`;
+  if (compact) {
+    return (
+      <section className={ground}>
+        <StarLattice className="absolute inset-0 h-full w-full text-gold opacity-[0.22]" size={64} />
+        <div className="relative px-5 pb-6 pt-5 sm:px-10">
+          <div className="flex items-center gap-2.5">
+            <Seal className="h-8 w-8" inverted />
+            <span className="font-display text-xl font-semibold">{t("app_name")}</span>
+          </div>
+          <blockquote className="mt-5 font-quran text-[24px] leading-[1.8]" lang="ar" dir="rtl">{VERSE}</blockquote>
+          <div className="text-[11px] opacity-70">{t("verse_ref")}</div>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className={ground}>
+      <StarLattice className="absolute inset-0 h-full w-full text-gold opacity-[0.22]" />
+      <div className="relative flex h-full flex-col justify-between gap-10 p-8 lg:p-12">
+        <div className="flex items-center gap-3">
+          <Seal className="h-10 w-10" inverted />
+          <div>
+            <div className="font-display text-2xl font-semibold leading-tight">{t("app_name")}</div>
+            <div className="text-xs opacity-70" dir="ltr">CPIT-499 · King Abdulaziz University</div>
+          </div>
+        </div>
+        <figure>
+          <blockquote className="font-quran text-[28px] leading-[1.9] lg:text-[40px]" lang="ar" dir="rtl">{VERSE}</blockquote>
+          <figcaption className="mt-2 text-xs opacity-70">{t("verse_ref")}</figcaption>
+          <p className="mt-8 max-w-sm border-t border-white/15 pt-4 text-sm leading-relaxed opacity-80">{t("tagline")}</p>
+        </figure>
+      </div>
+    </section>
+  );
+}
+
 export default function StaffLogin() {
   const { t } = useT();
   const { loginStaff } = useAuth();
@@ -41,30 +88,41 @@ export default function StaffLogin() {
   };
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[1.1fr_1fr]">
-      <section className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:block">
-        <img src="https://images.unsplash.com/photo-1554110838-816383ce7956?crop=entropy&cs=srgb&fm=jpg&q=85&w=1400" alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />
-        <div className="relative flex h-full flex-col justify-between p-12">
-          <div className="font-quran text-3xl">﴿ وَلَقَدْ يَسَّرْنَا الْقُرْآنَ لِلذِّكْرِ ﴾</div>
-          <div><div className="eyebrow !text-primary-foreground/60">CPIT-499 · KAU</div><h1 className="mt-2 text-5xl font-extrabold">{t("app_name")}</h1><p className="mt-3 max-w-md text-primary-foreground/80">{t("tagline")}</p></div>
-        </div>
-      </section>
-      <section className="flex min-h-screen flex-col px-5 py-6 sm:px-10">
+    <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <LoginPanel className="hidden lg:block" />
+      <LoginPanel compact className="lg:hidden" />
+      <section className="flex flex-1 flex-col px-5 py-5 sm:px-10 lg:min-h-screen">
         <div className="flex justify-end"><LangThemeToggles /></div>
-        <div className="my-auto w-full max-w-md self-center animate-rise">
+
+        <div className="my-auto w-full max-w-[400px] self-center py-8 lg:py-10">
           <div className="eyebrow">{t("staff_login")}</div>
-          <h2 className="mt-1 text-3xl font-extrabold">{t("sign_in")}</h2>
-          <form onSubmit={submit} className="mt-6 space-y-4" data-testid="staff-login-form">
-            <Field label={t("email")}><input data-testid="login-email-input" className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required dir="ltr" /></Field>
-            <Field label={t("password")}><input data-testid="login-password-input" className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required dir="ltr" /></Field>
-            <button data-testid="login-submit-button" className={`${btnPrimary} w-full`} disabled={busy}>{busy ? t("signing_in") : t("sign_in")}</button>
+          <h1 className="mt-1 font-display text-[32px] font-semibold leading-tight">{t("sign_in")}</h1>
+          <form onSubmit={submit} className="mt-8 space-y-4" data-testid="staff-login-form">
+            <Field label={t("email")}><input data-testid="login-email-input" className={inputCls} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required dir="ltr" /></Field>
+            <Field label={t("password")}><input data-testid="login-password-input" className={inputCls} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required dir="ltr" /></Field>
+            <button data-testid="login-submit-button" className={`${btnPrimary} w-full !py-3`} disabled={busy}>{busy ? t("signing_in") : t("sign_in")}</button>
           </form>
+
           {DEMO.length > 0 && (
-            <div className="mt-8"><div className="eyebrow mb-2">{t("demo_accounts")}</div>
-              <div className="grid gap-2">{DEMO.map(([role, em, pw]) => <button key={role} data-testid={`demo-login-${role}`} onClick={(e) => { setEmail(em); setPassword(pw); submit(e, em, pw); }} className="glass flex items-center justify-between rounded-xl px-4 py-2.5 text-sm hover:bg-primary/5"><span className="font-semibold">{t(`role_${role}`)}</span><span className="font-mono text-xs text-muted-foreground" dir="ltr">{em}</span></button>)}</div>
+            <div className="mt-10">
+              <div className="eyebrow mb-2">{t("demo_accounts")}</div>
+              <div className="panel divide-y divide-border rounded-lg">
+                {DEMO.map(([role, em, pw]) => (
+                  <button key={role} data-testid={`demo-login-${role}`} onClick={(e) => { setEmail(em); setPassword(pw); submit(e, em, pw); }}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-start text-sm transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-muted/60">
+                    <span className="font-semibold">{t(`role_${role}`)}</span>
+                    <span className="truncate font-mono text-xs text-muted-foreground" dir="ltr">{em}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          <Link to="/student-login" data-testid="go-student-login-link" className="mt-6 block text-center text-sm font-semibold text-secondary underline-offset-4 hover:underline">{t("i_am_student")}</Link>
+
+          <Link to="/student-login" data-testid="go-student-login-link"
+            className="group mt-6 flex items-center justify-between gap-3 border-t border-border pt-5 text-sm font-semibold text-primary">
+            <span className="underline-offset-4 group-hover:underline">{t("i_am_student")}</span>
+            <ArrowLeft size={16} className="shrink-0 ltr:-scale-x-100" />
+          </Link>
         </div>
       </section>
     </div>

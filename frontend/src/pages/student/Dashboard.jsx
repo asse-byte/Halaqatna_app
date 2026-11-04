@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { MasteryGauge, MetricCard, PageTitle, TrendChart } from "../../components/ui-kit";
+import { Figures, MasteryGauge, MetricCard, PageTitle, TrendChart } from "../../components/ui-kit";
 import { ForecastCard } from "../../components/ForecastCard";
 
 /**
@@ -32,18 +32,18 @@ export default function Dashboard() {
     <div data-testid="student-dashboard">
       <PageTitle title={t("welcome", { name: actor.name })} subtitle={[actor.circle?.name, `${t("juz")} ${actor.current_juz}`].filter(Boolean).join(" · ")} />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="sm:col-span-2"><MasteryGauge value={m.mastery} /></div>
-        <MetricCard label={t("momentum")} value={m.momentum} unit={t("pages_per_week")} hint={t("momentum_hint")} compact testId="momentum-card" delay={40} />
-        <MetricCard label={t("consistency")} value={m.consistency} unit="%" hint={t("consistency_hint")} compact testId="consistency-card" delay={80} />
-        <MetricCard label={t("total_pages")} value={m.total_pages} testId="total-pages-card" delay={120} />
-        <MetricCard label={t("sessions")} value={m.sessions_count} testId="sessions-count-card" delay={160} />
-        <MetricCard label={t("xp")} value={m.xp_total} accent testId="xp-card" delay={200} />
-        <MetricCard label={t("attendance_rate")} value={Math.round((m.attendance_rate ?? 0) * 100)} unit="%" testId="attendance-card" delay={240} />
-      </div>
+      <Figures className="grid-cols-2 lg:grid-cols-4">
+        <MasteryGauge value={m.mastery} className="col-span-2" />
+        <MetricCard label={t("momentum")} value={m.momentum} unit={t("pages_per_week")} hint={t("momentum_hint")} compact testId="momentum-card" />
+        <MetricCard label={t("consistency")} value={m.consistency} unit="%" hint={t("consistency_hint")} compact testId="consistency-card" />
+        <MetricCard label={t("total_pages")} value={m.total_pages} testId="total-pages-card" />
+        <MetricCard label={t("sessions")} value={m.sessions_count} testId="sessions-count-card" />
+        <MetricCard label={t("xp")} value={m.xp_total} accent testId="xp-card" />
+        <MetricCard label={t("attendance_rate")} value={Math.round((m.attendance_rate ?? 0) * 100)} unit="%" testId="attendance-card" />
+      </Figures>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-        <ForecastCard pred={pred} />
+      <div className="mt-6 grid items-start gap-4 lg:grid-cols-[1fr_1.5fr]">
+        <ForecastCard pred={pred} studentId={id} />
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
     </div>

@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Prediction;
 use App\Models\Student;
+use App\Models\SystemSetting;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +13,9 @@ use Illuminate\Support\Facades\Log;
 /** Thin client for the Python ML Prediction Service (FR10) — internal HTTP only. */
 class MlClient
 {
+    /** The ML service caps an ETA here when the predicted pace is effectively zero (ml/main.py). */
+    private const ETA_CAP_DAYS = 3650;
+
     private function url(string $path): string
     {
         return config('halaqtna.ml.url').$path;
@@ -46,17 +51,44 @@ class MlClient
         return 'forecast:stale:'.$student->student_id;
     }
 
+    private function post(Student $student, array $metrics, float $remainingPages): Response
+    {
+        return Http::timeout((int) config('halaqtna.ml.timeout', 3))
+            ->post($this->url('/forecast'), [
+                'student_id' => $student->student_id,
+                'momentum' => $metrics['momentum'] ?? 0,
+                'error_density' => $metrics['error_density'] ?? 0,
+                'attendance_rate' => $metrics['attendance_rate'] ?? 0,
+                'remaining_pages' => max(0, $remainingPages),
+            ]);
+    }
+
+    /**
+     * FR10 assumptions — a what-if put to the same model: the same /forecast call, with the
+     * scope's remaining pages and, when one is assumed, a baseline pace in place of the
+     * recorded momentum. Nothing is stored and the UC13 staleness flag is left alone: a
+     * scenario is a question asked of the model, not an update of the student's forecast,
+     * and the `prediction` history must hold only forecasts made from what was recorded.
+     * Null when the service cannot be reached, so the caller can fall back.
+     */
+    public function scenario(Student $student, array $metrics, float $remainingPages): ?array
+    {
+        try {
+            $resp = $this->post($student, $metrics, $remainingPages);
+            if (!$resp->successful()) return null;
+            $d = $resp->json();
+
+            return ['eta_days' => max(0, (int) $d['eta_days']), 'predicted_completion_date' => $d['predicted_completion_date']];
+        } catch (\Throwable $e) {
+            Log::warning('ML service unavailable: '.$e->getMessage());
+            return null;
+        }
+    }
+
     private function requestForecast(Student $student, array $metrics): ?Prediction
     {
         try {
-            $resp = Http::timeout((int) config('halaqtna.ml.timeout', 3))
-                ->post($this->url('/forecast'), [
-                    'student_id' => $student->student_id,
-                    'momentum' => $metrics['momentum'] ?? 0,
-                    'error_density' => $metrics['error_density'] ?? 0,
-                    'attendance_rate' => $metrics['attendance_rate'] ?? 0,
-                    'remaining_pages' => max(0, AnalyticsEngine::PAGES_PER_JUZ - ($metrics['pages_in_current_juz'] ?? 0)),
-                ]);
+            $resp = $this->post($student, $metrics, AnalyticsEngine::PAGES_PER_JUZ - ($metrics['pages_in_current_juz'] ?? 0));
             if (!$resp->successful()) return null;
             $d = $resp->json();
             // New row every time — old predictions are never overwritten.
@@ -76,6 +108,40 @@ class MlClient
     public function latest(Student $student): ?Prediction
     {
         return Prediction::where('student_id', $student->student_id)->orderByDesc('prediction_id')->first();
+    }
+
+    /**
+     * What the stored forecast rests on, in the student's own figures: which Juz it covers, how
+     * much data stands behind it, and the commitment and pace it assumes will continue. Read
+     * from the same metrics the forecast is made from, so the assumptions beside a date never
+     * describe a generic student.
+     *
+     * The pace is recovered from the stored ETA (remaining ÷ ETA) rather than stored twice. It
+     * is left out when the forecast is stale or capped: a date that no longer reflects the
+     * remaining pages, or that means "no progress", does not imply a pace.
+     */
+    public function basis(Student $student, array $metrics, ?Prediction $prediction): array
+    {
+        $remaining = max(0, AnalyticsEngine::PAGES_PER_JUZ - (float) ($metrics['pages_in_current_juz'] ?? 0));
+        $rate = (float) ($metrics['attendance_rate'] ?? 0);
+        $attended = (int) round($rate * (int) ($metrics['sessions_count'] ?? 0));
+        $weeks = count($metrics['trend'] ?? []);
+        $minSessions = (int) SystemSetting::num('forecast_min_sessions', 6);
+        $eta = $prediction ? (int) $prediction->eta_days : null;
+        $noEstimate = $eta !== null && $eta >= self::ETA_CAP_DAYS;
+
+        return [
+            'juz' => (int) $student->current_juz,
+            'pages_per_juz' => AnalyticsEngine::PAGES_PER_JUZ,
+            'remaining_pages' => round($remaining, 1),
+            'attended_sessions' => $attended,
+            'min_sessions' => $minSessions,
+            'cold_start' => $attended < $minSessions,
+            'attendance_pct' => (int) round($rate * 100),
+            'sessions_per_week' => $weeks > 0 ? round($attended / $weeks, 1) : null,
+            'pace_pages_per_week' => $eta > 0 && !$noEstimate && !$this->isStale($student) ? round($remaining / $eta * 7, 1) : null,
+            'no_estimate' => $noEstimate,
+        ];
     }
 
     /**

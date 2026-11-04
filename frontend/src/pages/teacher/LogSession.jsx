@@ -90,7 +90,7 @@ export default function LogSession() {
     <div className="mx-auto w-full max-w-lg overflow-x-hidden" data-testid="log-session-page">
       <PageTitle title={t("log_session_title")} />
       {pending > 0 && (
-        <div className="glass mb-4 flex items-center justify-between rounded-xl px-3 py-2 text-sm" data-testid="pending-sync-banner">
+        <div className="panel mb-4 flex items-center justify-between rounded-md px-3 py-2 text-sm" data-testid="pending-sync-banner">
           <span className="flex items-center gap-2"><CloudOff size={14} />{pending} {t("pending_sync")}</span>
           <button className={btnGhost} data-testid="sync-now-button" onClick={() => flushQueue(api).finally(() => setPending(readQueue().length))}>{t("sync_now")}</button>
         </div>
@@ -107,17 +107,17 @@ export default function LogSession() {
         </Field>
 
         <div>
-          <div className="mb-1 text-xs font-semibold text-muted-foreground">{t("session_type")}</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="mb-1.5 text-[13px] font-medium text-foreground/80">{t("session_type")}</div>
+          <div className="grid grid-cols-2 gap-0.5 rounded-md border border-input bg-background p-0.5" role="radiogroup" aria-label={t("session_type")}>
             {["NEW", "REVIEW"].map((a) => (
-              <button type="button" key={a} data-testid={`session-type-${a}`} onClick={() => set("session_type", a)}
-                className={`chip justify-center ${f.session_type === a ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{t(`type_${a}`)}</button>
+              <button type="button" key={a} role="radio" aria-checked={f.session_type === a} data-testid={`session-type-${a}`} onClick={() => set("session_type", a)}
+                className={`chip justify-center !rounded-[4px] border-0 font-semibold ${f.session_type === a ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{t(`type_${a}`)}</button>
             ))}
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-3">
-          <div className="mb-2 text-xs font-semibold text-muted-foreground">{t("range")}</div>
+        <div className="panel rounded-lg p-4">
+          <div className="mb-3 text-[13px] font-semibold">{t("range")}</div>
           <Field label={t("surah_from")}>
             <select data-testid="surah-from-select" className={inputCls} value={f.surah_from} onChange={(e) => pickSurah("surah_from", Number(e.target.value))}>
               {surahOptions.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
@@ -147,12 +147,12 @@ export default function LogSession() {
         </div>
 
         <Field label={t("pages_memorized")}>
-          <input data-testid="pages-input" className={`${inputCls} font-mono text-lg`} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} />
+          <input data-testid="pages-input" className={`${inputCls} text-lg tabular-nums`} type="number" step="0.25" min={0} max={99} value={f.pages_memorized} onChange={(e) => set("pages_memorized", e.target.value)} />
         </Field>
 
-        <div className="glass rounded-2xl p-3" data-testid="error-tagging-panel">
+        <div className="panel rounded-lg p-4" data-testid="error-tagging-panel">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">{t("errors")}</span>
+            <span className="text-[13px] font-semibold">{t("errors")}</span>
             <span className="text-xs text-muted-foreground" data-testid="errors-count">{t("errors_count", { n: f.errors.length })}</span>
           </div>
           <div className="mb-2 text-[11px] text-muted-foreground">{t("tap_to_tag")}</div>
@@ -173,8 +173,8 @@ export default function LogSession() {
           </div>
         </div>
 
-        <div className="fixed inset-x-0 bottom-16 z-10 px-4 md:static md:px-0">
-          <button data-testid="session-log-submit-button" className={`${btnPrimary} w-full py-3 shadow-xl`} disabled={busy || !f.student_id}>
+        <div className="fixed inset-x-0 bottom-[3.75rem] z-10 border-t border-border bg-background px-4 py-3 md:static md:border-0 md:bg-transparent md:p-0">
+          <button data-testid="session-log-submit-button" className={`${btnPrimary} w-full !py-3`} disabled={busy || !f.student_id}>
             <Save size={16} />{busy ? t("saving") : t("save_session")}
           </button>
         </div>
@@ -184,8 +184,8 @@ export default function LogSession() {
 }
 
 const ERROR_BTN = {
-  MEM_GAP: "border-red-300 text-red-800 dark:text-red-300 dark:border-red-800",
-  LNK_ERR: "border-amber-300 text-amber-800 dark:text-amber-300 dark:border-amber-800",
-  TAJ_ERR: "border-blue-300 text-blue-800 dark:text-blue-300 dark:border-blue-800",
-  SLF_CRT: "border-emerald-300 text-emerald-800 dark:text-emerald-300 dark:border-emerald-800",
+  MEM_GAP: "border-destructive/35 text-destructive",
+  LNK_ERR: "border-warning/35 text-warning",
+  TAJ_ERR: "border-primary/35 text-primary",
+  SLF_CRT: "border-success/35 text-success",
 };

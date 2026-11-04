@@ -21,3 +21,11 @@ export function formatDate(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? String(value).slice(0, 10) : toLocalDate(d);
 }
+
+/** A calendar date written out ("12 March 2027"), in Western digits like the rest of the app. */
+export function longDate(value, locale) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  if (!m) return formatDate(value);
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn-ca-gregory" : "en-GB", { day: "numeric", month: "long", year: "numeric" }).format(d);
+}

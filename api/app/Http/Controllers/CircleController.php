@@ -20,13 +20,18 @@ class CircleController extends Controller
      * The provisional constants (UC3) and the range each one can take. A value outside it is
      * not a calibration but a breakage: d_max = 0 divides by zero in every Mastery figure,
      * alpha outside (0, 1] is no longer a weighted average, and negative XP rates would
-     * take points away from students for attending.
+     * take points away from students for attending. A baseline pace of zero would forecast
+     * that a student never finishes, and the forecast needs at least one session to rest on.
      */
     public const SETTING_RULES = [
         'd_max' => 'numeric|gt:0|max:100',
         'alpha' => 'numeric|gt:0|lte:1',
         'xp_per_page' => 'integer|min:0|max:1000',
         'xp_per_session' => 'integer|min:0|max:1000',
+        'pace_new' => 'numeric|gt:0|max:100',
+        'pace_review' => 'numeric|gt:0|max:100',
+        'pace_fast' => 'numeric|gt:0|max:100',
+        'forecast_min_sessions' => 'integer|min:1|max:50',
     ];
 
     public function index(Request $r)
@@ -81,7 +86,9 @@ class CircleController extends Controller
             'circle' => $circle,
             'teachers' => $byRole('TEACHER'),
             'admins' => $byRole('CIRCLE_ADMIN'),
-            'students' => $circle->students()->with('teachers:user_id,name')->orderBy('name')->get(),
+            // sessions_count lets the roster mark a student nobody has recorded yet as new,
+            // instead of a row that reads as if the figures were zero.
+            'students' => $circle->students()->with('teachers:user_id,name')->withCount('sessions')->orderBy('name')->get(),
         ]);
     }
 

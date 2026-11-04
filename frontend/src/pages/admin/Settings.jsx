@@ -51,13 +51,13 @@ export default function Settings() {
 
       <form onSubmit={save} className="max-w-3xl space-y-3" data-testid="settings-form">
         {rows.map((r, i) => (
-          <div key={r.setting_key} className="glass flex flex-wrap items-center justify-between gap-4 rounded-2xl p-4">
+          <div key={r.setting_key} className="panel flex flex-wrap items-center justify-between gap-4 rounded-lg p-4">
             <div className="min-w-0 flex-1">
               <div className="font-semibold">{label(r)}</div>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{hint(r)}</p>
               <div className="mt-1 font-mono text-[10px] text-muted-foreground/70" dir="ltr">{r.setting_key}</div>
             </div>
-            <input data-testid={`setting-${r.setting_key}`} className={`${inputCls} !w-28 text-center font-mono`} dir="ltr" type="number" step="any"
+            <input data-testid={`setting-${r.setting_key}`} className={`${inputCls} !w-28 text-center tabular-nums`} dir="ltr" type="number" step="any"
               value={r.setting_value} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, setting_value: e.target.value } : x)))} />
           </div>
         ))}
@@ -69,14 +69,14 @@ export default function Settings() {
       <section className="mt-10 max-w-3xl" data-testid="forecast-evaluation-section">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-lg font-bold">{t("eval_title")}</h2>
+            <h2 className="panel-title text-lg">{t("eval_title")}</h2>
             <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">{t("eval_note")}</p>
           </div>
           <button data-testid="run-evaluation-button" className={btnPrimary} onClick={runEval} disabled={evalBusy}>{evalBusy ? t("loading") : t("run_evaluation")}</button>
         </div>
 
         {evalRep && (
-          <div className="glass overflow-x-auto rounded-2xl animate-rise" data-testid="evaluation-report">
+          <div className="panel overflow-x-auto rounded-lg" data-testid="evaluation-report">
             <div className="border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
               {t("eval_rows", { students: evalRep.split.students_total, total: evalRep.split.rows_total, train: evalRep.split.rows_train, test: evalRep.split.rows_test })}
               {" · "}{t("eval_split")}
@@ -95,13 +95,13 @@ export default function Settings() {
               <tbody className="divide-y divide-border/60">
                 {Object.entries(evalRep.results).map(([name, r]) => (
                   <tr key={name} data-testid={`eval-row-${name}`} className={name === evalRep.best_by_mae_days ? "bg-primary/5" : ""}>
-                    <td className="px-4 py-2 font-mono text-xs">{name}{name === evalRep.best_by_mae_days && <span className="ms-2 text-[10px] text-gold">★</span>}</td>
-                    <td className="px-4 py-2 font-mono">{r.within_2_weeks_pct}%</td>
-                    <td className="px-4 py-2 font-mono">{r.mae_days}</td>
-                    <td className="px-4 py-2 font-mono">{r.rmse_days}</td>
-                    <td className="px-4 py-2 font-mono">{r.bias_days}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{name}{name === evalRep.best_by_mae_days && <span className="ms-2 text-[10px] text-gold-ink">★</span>}</td>
+                    <td className="px-4 py-2 tabular-nums">{r.within_2_weeks_pct}%</td>
+                    <td className="px-4 py-2 tabular-nums">{r.mae_days}</td>
+                    <td className="px-4 py-2 tabular-nums">{r.rmse_days}</td>
+                    <td className="px-4 py-2 tabular-nums">{r.bias_days}</td>
                     <td className="px-4 py-2">
-                      <span className={`chip !min-h-0 text-[11px] ${r.meets_nfr10_target ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" : "border-red-300 text-red-700 dark:text-red-400"}`}>
+                      <span className={`chip !min-h-0 text-[11px] ${r.meets_nfr10_target ? "border-success/35 text-success" : "border-destructive/35 text-destructive"}`}>
                         {r.meets_nfr10_target ? t("eval_met") : t("eval_not_met")}
                       </span>
                     </td>

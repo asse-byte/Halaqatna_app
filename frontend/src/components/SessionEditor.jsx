@@ -121,7 +121,7 @@ export function SessionEditor({ session, onClose, onSaved }) {
         )}
 
         {!absent && (
-          <div className="glass rounded-2xl p-3">
+          <div className="panel rounded-lg p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-muted-foreground">{t("errors")}</span>
               <span className="text-xs text-muted-foreground">{t("errors_count", { n: f.errors.length })}</span>
