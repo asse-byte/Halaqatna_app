@@ -31,6 +31,65 @@ class DashboardSummaryTest extends TestCase
         return collect($series)->firstWhere('week', now()->startOfWeek()->subWeeks($weeksAgo)->toDateString());
     }
 
+    public function test_daily_attendance_and_mistake_counts_read_the_last_week_and_the_history(): void
+    {
+        $t1 = $this->token('t1@x.sa');
+        $yesterday = now()->subDay()->toDateString();
+        $this->logSession($t1, $this->s1->student_id, $yesterday, 3, [1, 3, 3])->assertStatus(201);
+        $this->logSession($this->token('t2@x.sa'), $this->s2->student_id, $yesterday, 0, [], 'A')->assertStatus(201);
+
+        $body = $this->as($this->token('a1@x.sa'))->getJson("/api/circles/{$this->c1->circle_id}/dashboard")->assertOk()->json();
+
+        $this->assertCount(7, $body['daily_attendance']);
+        $this->assertSame(now()->toDateString(), $body['daily_attendance'][6]['date']);
+        $day = $body['daily_attendance'][5];
+        $this->assertSame([$yesterday, 2, 1], [$day['date'], $day['marked'], $day['attended']]);
+        $this->assertEquals(50, $day['rate']);
+        $this->assertNull($body['daily_attendance'][0]['rate']);   // no circle that day is not 0%
+
+        $this->assertEqualsCanonicalizing(['TAJ_ERR' => 2, 'MEM_GAP' => 1], collect($body['error_types'])->pluck('count', 'code')->all());
+    }
+
+    /** FR16 — these charts are scoped like the rows: a teacher never counts a colleague's students. */
+    public function test_daily_attendance_and_mistake_counts_are_scoped_to_a_teachers_own_students(): void
+    {
+        $this->logSession($this->token('t1@x.sa'), $this->s1->student_id, now()->subDay()->toDateString(), 3, [1])->assertStatus(201);
+
+        $body = $this->as($this->token('t2@x.sa'))->getJson("/api/circles/{$this->c1->circle_id}/dashboard")->assertOk()->json();
+
+        $this->assertSame([], $body['error_types']);
+        $this->assertSame(0, $body['daily_attendance'][5]['marked']);
+    }
+
+    public function test_session_levels_follow_mastery_and_keep_only_the_last_eight(): void
+    {
+        $t = $this->token('t1@x.sa');
+        foreach (range(1, 10) as $i) {
+            $this->logSession($t, $this->s1->student_id, now()->subDays(30 - $i)->toDateString(), 1, $i === 10 ? [1] : [])->assertStatus(201);
+        }
+        $levels = $this->as($t)->getJson("/api/students/{$this->s1->student_id}/metrics")->assertOk()->json('session_levels');
+
+        $this->assertCount(8, $levels);
+        $this->assertEquals(100, $levels[6]['level']);
+        $this->assertLessThan(100, $levels[7]['level']);     // the mistake in the last session shows
+        $this->assertSame(now()->subDays(20)->toDateString(), $levels[7]['date']);
+    }
+
+    /** The printed report states the same scope and assumptions as the screen, in both languages. */
+    public function test_the_student_report_carries_the_forecast_basis_and_still_renders(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->logSession($t, $this->s1->student_id, now()->subDay()->toDateString(), 2)->assertStatus(201);
+        \App\Models\Prediction::create(['student_id' => $this->s1->student_id, 'predicted_completion_date' => now()->addDays(40)->toDateString(),
+            'eta_days' => 40, 'model_version' => 'test', 'generated_at' => now()]);
+
+        $body = $this->as($t)->getJson("/api/students/{$this->s1->student_id}/report")->assertOk()->json();
+        $this->assertTrue($body['forecast_basis']['cold_start']);
+        foreach (['ar', 'en'] as $locale) {
+            $this->as($t)->get("/api/students/{$this->s1->student_id}/report.pdf?locale={$locale}")->assertOk();
+        }
+    }
+
     public function test_weekly_attendance_covers_eight_weeks_and_leaves_an_unmarked_week_empty(): void
     {
         $t1 = $this->token('t1@x.sa');

@@ -39,7 +39,7 @@ class DatabaseSeeder extends Seeder
             ['pace_new', '1', 'Baseline pace, new memorisation: pages per week (provisional)'],
             ['pace_review', '5', 'Baseline pace, consolidation and review: pages per week (provisional)'],
             ['pace_fast', '10', 'Baseline pace, fast student: pages per week (provisional)'],
-            ['forecast_min_sessions', '4', 'Sessions recommended before the forecast is relied on (provisional)']] as [$k, $v, $d]) {
+            ['forecast_min_sessions', '6', 'Sessions recommended before the forecast is relied on (provisional)']] as [$k, $v, $d]) {
             SystemSetting::firstOrCreate(['setting_key' => $k], ['setting_value' => $v, 'description' => $d]);
         }
         if (Badge::count() === 0) {
@@ -131,6 +131,8 @@ class DatabaseSeeder extends Seeder
             $g->evaluateBadges($st, $analytics->metrics($st));
             if ($i % 2 === 0) $st->challenges()->attach(1 + ($i % 3), ['status' => 'ACTIVE', 'progress' => mt_rand(0, 4), 'started_at' => now()->subDays(3)]);
         }
+
+        $this->call(JuzMapDemoSeeder::class);
 
         // Second circle: two students so the RBAC exit test has data to be refused
         foreach ([['فيصل عادل', 'MJD472'], ['ماجد وليد', 'WLD638']] as [$n, $code]) {

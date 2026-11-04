@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Support\MasteryBand;
 use App\Support\Surah;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /** Report Service — FR14, FR15. The ONLY component that writes to file storage. */
@@ -27,6 +28,7 @@ class ReportService
     {
         $sessions = $student->sessions()->with('errors.errorType', 'teacher')->orderByDesc('session_date')->get();
         $metrics = $this->analytics->metrics($student);
+        $prediction = $this->ml->latest($student);
 
         return [
             // Teachers by name only: this report is also served to the student and, as a PDF,
@@ -36,7 +38,8 @@ class ReportService
             'band' => MasteryBand::for($metrics['mastery']),
             'xp_total' => $this->gamification->totalXp($student->student_id),
             'badges' => $student->badges()->get(),
-            'prediction' => $this->ml->latest($student),
+            'prediction' => $prediction,
+            'forecast_basis' => $this->ml->basis($student, $metrics, $prediction),
             'sessions' => $sessions->map(fn ($s) => [
                 'session_id' => $s->session_id, 'session_date' => $s->session_date, 'teacher' => $s->teacher?->name,
                 // The range reads as "البقرة 1 – 5", never as the raw "2:1 – 2:5" a reader has to decode.
@@ -106,7 +109,8 @@ class ReportService
                 'momentum' => $m['momentum'], 'precision' => $m['precision'], 'consistency' => $m['consistency'],
                 'review_depth' => $m['review_depth'], 'total_pages' => $m['total_pages'],
                 'sessions_count' => $m['sessions_count'], 'attendance_rate' => $m['attendance_rate'],
-                'trend' => $m['trend_summary'], 'teachers' => $s->teachers->pluck('name')->values(),
+                'trend' => $m['trend_summary'], 'session_levels' => $m['session_levels'],
+                'teachers' => $s->teachers->pluck('name')->values(),
                 'last_session_date' => $m['last_session_date'],
                 'prediction' => $this->ml->latest($s),
             ];
@@ -132,6 +136,8 @@ class ReportService
                 'sessions_this_week' => $this->sessionsThisWeek($active->pluck('student_id')->all()),
             ],
             'weekly_attendance' => $this->weeklyAttendance($active->pluck('student_id')->all()),
+            'daily_attendance' => $this->dailyAttendance($active->pluck('student_id')->all()),
+            'error_types' => $this->errorTypeCounts($active->pluck('student_id')->all()),
             'improving' => $active->where('trend.direction', 'UP')->pluck('name')->values(),
             'needs_attention' => $rows->filter(fn ($r) => $r['is_active'] && ($r['trend']['direction'] === 'DOWN' || ($r['consistency'] !== null && $r['consistency'] < 60)))
                 ->sortBy('mastery')->values(),
@@ -165,6 +171,40 @@ class ReportService
         }
 
         return $weeks;
+    }
+
+    /**
+     * The same register reading for each of the last seven days, oldest first. A day with
+     * nothing marked is null: no circle met, which is not the same as nobody coming.
+     */
+    private function dailyAttendance(array $studentIds): array
+    {
+        $today = now()->startOfDay();
+        $rows = RecitationSession::whereIn('student_id', $studentIds)
+            ->whereBetween('session_date', [$today->copy()->subDays(6)->toDateString(), $today->toDateString()])
+            ->get(['session_date', 'attendance_status'])->groupBy('session_date');
+
+        return collect(range(6, 0))->map(function ($back) use ($today, $rows) {
+            $date = $today->copy()->subDays($back)->toDateString();
+            $in = $rows->get($date, collect());
+            $attended = $in->filter->attended()->count();
+
+            return ['date' => $date, 'marked' => $in->count(), 'attended' => $attended,
+                'rate' => $in->isEmpty() ? null : round($attended / $in->count() * 100, 1)];
+        })->all();
+    }
+
+    /** How often each kind of mistake was noted for these students; kinds never noted are left out. */
+    private function errorTypeCounts(array $studentIds): array
+    {
+        return DB::table('session_error')
+            ->join('session', 'session.session_id', '=', 'session_error.session_id')
+            ->join('error_type', 'error_type.error_type_id', '=', 'session_error.error_type_id')
+            ->whereIn('session.student_id', $studentIds)
+            ->groupBy('error_type.code', 'error_type.label_ar', 'error_type.label_en')
+            ->get(['error_type.code', 'error_type.label_ar', 'error_type.label_en', DB::raw('COUNT(*) as count')])
+            ->map(fn ($r) => ['code' => $r->code, 'label_ar' => $r->label_ar, 'label_en' => $r->label_en, 'count' => (int) $r->count])
+            ->all();
     }
 
     private function sessionsThisWeek(array $studentIds): int

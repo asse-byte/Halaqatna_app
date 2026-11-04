@@ -219,6 +219,25 @@ class AnalyticsEngine
     }
 
     /**
+     * The level after each of the last $n recited sessions — the same §3.3 Mastery the weekly
+     * trend plots, read session by session so a teacher can see the last eight at a glance.
+     * A session with no pages has no error density, so it adds no point of its own.
+     */
+    public function sessionLevels(Collection $sessions, int $n = 8): array
+    {
+        $points = [];
+        $upTo = collect();
+        foreach ($sessions->sortBy([['session_date', 'asc'], ['session_id', 'asc']]) as $s) {
+            $upTo->push($s);
+            if ($this->errorDensity($s) !== null) {
+                $points[] = ['date' => (string) $s->session_date, 'level' => $this->mastery($upTo)];
+            }
+        }
+
+        return array_slice($points, -$n);
+    }
+
+    /**
      * Plain reading of that curve: is the student climbing, holding steady, or slipping?
      *
      * The last four weeks are compared with the four before them, on both series. A change
@@ -276,6 +295,7 @@ class AnalyticsEngine
             'student_id' => $student->student_id,
             'trend' => $trend,
             'trend_summary' => $this->trendDirection($trend),
+            'session_levels' => $this->sessionLevels($sessions),
             'error_count' => (int) $sessions->sum(fn ($s) => $s->errors->count()),
             'mastery' => $this->mastery($sessions),
             'momentum' => $this->momentum($sessions),

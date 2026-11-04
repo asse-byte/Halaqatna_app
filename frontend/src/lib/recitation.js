@@ -10,3 +10,6 @@ export const DEMO_RECITER = { ar: "مشاري راشد العفاسي", en: "Mis
 
 export const recitationUrl = (surah) =>
   `https://download.quranicaudio.com/quran/mishaari_raashid_al_3afaasee/${String(surah).padStart(3, "0")}.mp3`;
+
+/** The Surah on Quran.com, where the student can follow the text during a recitation. */
+export const readAlongUrl = (surah) => `https://quran.com/${surah}`;

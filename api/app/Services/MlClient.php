@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Prediction;
 use App\Models\Student;
+use App\Models\SystemSetting;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -12,6 +13,9 @@ use Illuminate\Support\Facades\Log;
 /** Thin client for the Python ML Prediction Service (FR10) — internal HTTP only. */
 class MlClient
 {
+    /** The ML service caps an ETA here when the predicted pace is effectively zero (ml/main.py). */
+    private const ETA_CAP_DAYS = 3650;
+
     private function url(string $path): string
     {
         return config('halaqtna.ml.url').$path;
@@ -104,6 +108,40 @@ class MlClient
     public function latest(Student $student): ?Prediction
     {
         return Prediction::where('student_id', $student->student_id)->orderByDesc('prediction_id')->first();
+    }
+
+    /**
+     * What the stored forecast rests on, in the student's own figures: which Juz it covers, how
+     * much data stands behind it, and the commitment and pace it assumes will continue. Read
+     * from the same metrics the forecast is made from, so the assumptions beside a date never
+     * describe a generic student.
+     *
+     * The pace is recovered from the stored ETA (remaining ÷ ETA) rather than stored twice. It
+     * is left out when the forecast is stale or capped: a date that no longer reflects the
+     * remaining pages, or that means "no progress", does not imply a pace.
+     */
+    public function basis(Student $student, array $metrics, ?Prediction $prediction): array
+    {
+        $remaining = max(0, AnalyticsEngine::PAGES_PER_JUZ - (float) ($metrics['pages_in_current_juz'] ?? 0));
+        $rate = (float) ($metrics['attendance_rate'] ?? 0);
+        $attended = (int) round($rate * (int) ($metrics['sessions_count'] ?? 0));
+        $weeks = count($metrics['trend'] ?? []);
+        $minSessions = (int) SystemSetting::num('forecast_min_sessions', 6);
+        $eta = $prediction ? (int) $prediction->eta_days : null;
+        $noEstimate = $eta !== null && $eta >= self::ETA_CAP_DAYS;
+
+        return [
+            'juz' => (int) $student->current_juz,
+            'pages_per_juz' => AnalyticsEngine::PAGES_PER_JUZ,
+            'remaining_pages' => round($remaining, 1),
+            'attended_sessions' => $attended,
+            'min_sessions' => $minSessions,
+            'cold_start' => $attended < $minSessions,
+            'attendance_pct' => (int) round($rate * 100),
+            'sessions_per_week' => $weeks > 0 ? round($attended / $weeks, 1) : null,
+            'pace_pages_per_week' => $eta > 0 && !$noEstimate && !$this->isStale($student) ? round($remaining / $eta * 7, 1) : null,
+            'no_estimate' => $noEstimate,
+        ];
     }
 
     /**

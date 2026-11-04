@@ -48,6 +48,7 @@ __pycache__/
 venv/
 ml/model.joblib
 ml/reports/*.json
+ml/reports/*.svg
 
 # --- Coverage / test output ---
 coverage/

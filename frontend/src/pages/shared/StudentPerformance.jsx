@@ -5,7 +5,8 @@ import { FileDown, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
 import { api, errMsg, openPdf } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, ErrorChip, PageTitle, Table, TrendChart } from "../../components/ui-kit";
+import { ATT_STYLES, btnGhost, btnPrimary, ConfirmDialog, Dash, ErrorChip, PageTitle, Table, TrendChart } from "../../components/ui-kit";
+import { ErrorDonut, LevelLine } from "../../components/SummaryCharts";
 import { MetricPanel } from "../../components/MetricPanel";
 import { ForecastCard } from "../../components/ForecastCard";
 import { SessionEditor } from "../../components/SessionEditor";
@@ -89,6 +90,15 @@ export default function StudentPerformance() {
     return { date: toLocalDate(d), overdue: d < new Date() };
   }, [student]);
 
+  /** This student's mistakes by kind, counted from the history already on the page. */
+  const errorTypes = useMemo(() => {
+    const byCode = new Map();
+    sessions.flatMap((s) => s.errors).forEach(({ error_type: e }) => {
+      if (e) byCode.set(e.code, { ...e, count: (byCode.get(e.code)?.count ?? 0) + 1 });
+    });
+    return [...byCode.values()];
+  }, [sessions]);
+
   if (!student || !m) return <div className="text-muted-foreground">{t("loading")}</div>;
 
   return (
@@ -133,6 +143,11 @@ export default function StudentPerformance() {
         <TrendChart trend={m.trend} summary={m.trend_summary} />
       </div>
 
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+        <LevelLine points={m.session_levels} />
+        <ErrorDonut items={errorTypes} testId="chart-student-errors" />
+      </div>
+
       <h2 className="panel-title mb-3 mt-10">{t("history")}</h2>
       <Table
         head={[t("date"), t("attendance"), t("session_type"), t("range"), t("pages"), t("errors"), t("accuracy"), t("teacher"), ""]}
@@ -148,10 +163,10 @@ export default function StudentPerformance() {
                 the row happens to carry. */}
             <td className="px-4 py-2 text-xs">{s.surah_from ? t(`type_${s.session_type}`) : "—"}</td>
             <td className="px-4 py-2 text-xs">{s.surah_from ? rangeLabel(s, locale) : "—"}</td>
-            <td className="px-4 py-2">{s.pages_memorized}</td>
+            <td className="px-4 py-2">{Number(s.pages_memorized) ? s.pages_memorized : <Dash />}</td>
             <td className="px-4 py-2">
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-xs text-muted-foreground">{s.error_count}</span>
+                <span className="text-xs">{s.error_count ? <span className="font-semibold">{s.error_count}</span> : <Dash />}</span>
                 {s.errors.map((e) => <ErrorChip key={e.error_id} type={e.error_type} ayahRef={e.ayah_ref} testId={`session-error-${e.error_id}`} />)}
               </div>
             </td>

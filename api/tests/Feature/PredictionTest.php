@@ -152,6 +152,55 @@ class PredictionTest extends TestCase
         $this->assertTrue($body['stale']);
     }
 
+    /** A forecast says which Juz it covers and what it rests on, in this student's own figures. */
+    public function test_a_forecast_carries_its_scope_and_assumptions(): void
+    {
+        $this->s1->update(['current_juz' => 7]);
+        $t = $this->token('t1@x.sa');
+        $this->fakeHttp(['*/forecast' => Http::response(array_merge(self::ML_OK, ['eta_days' => 56]))]);
+        $this->logSession($t, $this->s1->student_id, now()->subDays(2)->toDateString(), 4)->assertStatus(201);
+
+        $a = $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->json('assumptions');
+
+        $this->assertSame(7, $a['juz']);
+        $this->assertSame(20, $a['pages_per_juz']);
+        $this->assertEquals(16, $a['remaining_pages']);
+        $this->assertSame(100, $a['attendance_pct']);
+        $this->assertEquals(2.0, $a['pace_pages_per_week']);     // 16 pages left, 56 days
+        $this->assertFalse($a['no_estimate']);
+    }
+
+    /** One session is not much to go on, and the student is told so until the threshold is met. */
+    public function test_a_forecast_on_few_attended_sessions_is_flagged_until_the_threshold(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->fakeHttp(['*/forecast' => Http::response(self::ML_OK)]);
+        $read = fn () => $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->json('assumptions');
+
+        foreach (range(1, 5) as $i) {
+            $this->logSession($t, $this->s1->student_id, now()->subDays(20 - $i)->toDateString(), 1)->assertStatus(201);
+        }
+        $this->assertSame(6, $read()['min_sessions']);
+        $this->assertTrue($read()['cold_start']);
+        $this->assertSame(5, $read()['attended_sessions']);
+
+        $this->logSession($t, $this->s1->student_id, now()->subDays(2)->toDateString(), 1)->assertStatus(201);
+        $this->assertFalse($read()['cold_start']);
+    }
+
+    /** The capped ETA means "no measurable pace", which no screen may print as a date in ten years. */
+    public function test_a_capped_forecast_is_marked_as_no_estimate(): void
+    {
+        $t = $this->token('t1@x.sa');
+        $this->fakeHttp(['*/forecast' => Http::response(array_merge(self::ML_OK, ['eta_days' => 3650]))]);
+        $this->logSession($t, $this->s1->student_id, now()->subDays(2)->toDateString(), 1)->assertStatus(201);
+
+        $a = $this->as($t)->getJson("/api/students/{$this->s1->student_id}/prediction")->assertOk()->json('assumptions');
+
+        $this->assertTrue($a['no_estimate']);
+        $this->assertNull($a['pace_pages_per_week']);
+    }
+
     /** An error response must not be written as if it were a forecast. */
     public function test_an_error_response_stores_nothing(): void
     {

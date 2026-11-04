@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronDown, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ChevronDown, Info, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { longDate } from "../lib/dates";
@@ -13,8 +13,13 @@ const PACES = ["recorded", "new", "review", "fast"];
  * When the forecasting service is down the last stored forecast is shown with a notice
  * that it may be out of date (UC13), rather than no forecast at all.
  *
- * Under it, the assumptions the supervisor's review asked for: a target scope (the current
- * Juz, the whole Quran, or a range of Juz) and, for staff, a baseline pace for a student whose
+ * A date alone invites two wrong readings: that it is the whole Quran, and that it is as
+ * reliable after two sessions as after twenty. So it always says which Juz it covers, warns
+ * while the data is thin, and states what it assumes in this student's own figures. A capped
+ * forecast means "no measurable pace yet" and is not printed as a date ten years away.
+ *
+ * Under that, the what-if the supervisor's review asked for: a target scope (the current Juz,
+ * the whole Quran, or a range of Juz) and, for staff, a baseline pace for a student whose
  * history is still too short to have one. They are request parameters to the API, which puts
  * the question to the ML service and falls back to remaining pages ÷ pace when it cannot be
  * reached. Nothing is saved: the stored forecast above is never replaced by a what-if.
@@ -34,7 +39,7 @@ export function ForecastCard({ pred, onRefresh, studentId, canSetPace = false })
   const from = scope === "quran" ? 1 : scope === "range" ? range?.[0] ?? current : current;
   const to = scope === "quran" ? 30 : scope === "range" ? range?.[1] ?? Math.min(current + 2, 30) : current;
   const isDefault = scope === "current" && pace === "recorded";
-  const sparse = a && a.sessions_count < a.min_sessions;
+  const dated = p && !a?.no_estimate;
 
   useEffect(() => {
     if (!open || isDefault || !studentId) { setScenario(null); return undefined; }
@@ -58,8 +63,8 @@ export function ForecastCard({ pred, onRefresh, studentId, canSetPace = false })
   return (
     <Panel testId="forecast-card" title={t("forecast")}
       aside={onRefresh && <button data-testid="refresh-forecast-button" className={`${btnGhost} !px-2 !py-1 text-xs`} onClick={onRefresh}><RefreshCw size={12} />{t("refresh_forecast")}</button>}>
-      {!p ? (
-        <div className="text-sm text-muted-foreground">{t("forecast_none")}</div>
+      {!dated ? (
+        <div className="text-sm text-muted-foreground" data-testid="forecast-none">{t("forecast_none")}</div>
       ) : (
         <>
           {/* The model version and the generation timestamp are diagnostics for the
@@ -76,11 +81,25 @@ export function ForecastCard({ pred, onRefresh, studentId, canSetPace = false })
 
       {a && (
         <>
-          {/* A note in the margin of the forecast, as a teacher pencils one beside a figure. */}
-          <div className="mt-4 border-s-2 border-secondary/50 ps-3 text-xs leading-relaxed text-muted-foreground" data-testid="forecast-caveat">
-            <div>{t("forecast_caveat", { n: a.min_sessions })}</div>
-            {sparse && <div className="mt-1 font-semibold text-warning" data-testid="forecast-sparse">{t("forecast_sparse", { n: a.sessions_count, min: a.min_sessions })}</div>}
-          </div>
+          {dated && (
+            <>
+              {/* A note in the margin of the forecast, as a teacher pencils one beside a figure. */}
+              <div className="mt-4 border-s-2 border-secondary/50 ps-3 text-xs leading-relaxed text-muted-foreground" data-testid="forecast-caveat">
+                <div>{t("forecast_covers", { juz: a.juz })}</div>
+                {a.cold_start && <div className="mt-1 font-semibold text-warning" data-testid="forecast-sparse">{t("forecast_sparse", { n: a.attended_sessions, min: a.min_sessions })}</div>}
+              </div>
+
+              <div className="mt-4 rounded-md border border-border bg-muted/40 p-3" data-testid="forecast-assumptions">
+                <div className="flex items-center gap-1.5 text-[13px] font-semibold"><Info size={14} strokeWidth={1.75} className="text-muted-foreground" />{t("assumptions_title")}</div>
+                <ul className="mt-1.5 list-disc space-y-1 ps-4 text-xs leading-relaxed text-muted-foreground">
+                  <li>{t("assume_scope", { juz: a.juz, remaining: a.remaining_pages, total: a.pages_per_juz })}</li>
+                  <li>{t("assume_commitment", { pct: a.attendance_pct, per_week: a.sessions_per_week ?? "—" })}</li>
+                  {a.pace_pages_per_week !== null && <li>{t("assume_pace", { pace: a.pace_pages_per_week })}</li>}
+                  <li>{t("assume_limits")}</li>
+                </ul>
+              </div>
+            </>
+          )}
 
           <div className="-mx-4 -mb-4 mt-4 border-t border-border sm:-mx-5 sm:-mb-5">
             <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} data-testid="assumptions-toggle"
@@ -123,8 +142,8 @@ export function ForecastCard({ pred, onRefresh, studentId, canSetPace = false })
                     <select className={inputCls} value={pace} onChange={(e) => setPace(e.target.value)} data-testid="pace-select">
                       {PACES.map((k) => <option key={k} value={k}>{paceLabel(k)}</option>)}
                     </select>
-                    <span className={`mt-1 block text-[11px] ${sparse ? "font-semibold text-warning" : "text-muted-foreground"}`}>
-                      {sparse ? t("baseline_pace_sparse_hint") : t("baseline_pace_hint")}
+                    <span className={`mt-1 block text-[11px] ${a.cold_start ? "font-semibold text-warning" : "text-muted-foreground"}`}>
+                      {a.cold_start ? t("baseline_pace_sparse_hint") : t("baseline_pace_hint")}
                     </span>
                   </label>
                 )}

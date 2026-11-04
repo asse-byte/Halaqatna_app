@@ -5,7 +5,7 @@ import { api, errMsg } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useT } from "../lib/i18n";
 import { BAND_FILL, Dash, Figures, MetricCard, NewBadge, PageTitle, Panel, Table } from "./ui-kit";
-import { BandDistribution, WeeklyAttendanceChart } from "./SummaryCharts";
+import { AttendanceChart, BandDistribution, ErrorDonut, Sparkline } from "./SummaryCharts";
 
 const TREND_TONE = {
   UP: "text-success",
@@ -53,8 +53,9 @@ export function CircleDashboard({ title, subtitle }) {
         <MetricCard label={t("avg_attendance")} value={k.avg_attendance} unit="%" testId="dash-attendance" />
       </Figures>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <WeeklyAttendanceChart weeks={data.weekly_attendance} />
+      <div className="mt-6 grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <AttendanceChart days={data.daily_attendance} weeks={data.weekly_attendance} />
+        <ErrorDonut items={data.error_types} />
         <BandDistribution students={data.students} />
       </div>
 
@@ -95,7 +96,7 @@ export function CircleDashboard({ title, subtitle }) {
 
       <h2 className="panel-title mb-3 mt-10">{t("students")}</h2>
       <Table
-        head={[t("student"), t("current_juz"), t("mastery"), t("momentum"), t("consistency"), t("trend"), t("last_session"), ""]}
+        head={[t("student"), t("current_juz"), t("mastery"), t("chart_level_short"), t("momentum"), t("consistency"), t("trend"), t("last_session"), ""]}
         testId="dashboard-students-table"
         empty={t("no_students_yet")}
       >
@@ -120,10 +121,11 @@ export function CircleDashboard({ title, subtitle }) {
                   </span>
                 )}
               </td>
+              <td className="px-4 py-3"><Sparkline points={s.session_levels} /></td>
               <td className="px-4 py-3 whitespace-nowrap">{fresh ? <Dash /> : <>{s.momentum} <span className="text-xs text-muted-foreground">{t("pages_per_week")}</span></>}</td>
               <td className="px-4 py-3">{s.consistency == null ? <Dash /> : `${s.consistency}%`}</td>
               <td className={`px-4 py-3 text-xs font-semibold ${TREND_TONE[s.trend.direction]}`}>{fresh ? <Dash /> : t(`trend_${s.trend.direction}`)}</td>
-              <td className="px-4 py-3 text-xs text-muted-foreground" dir="ltr">{s.last_session_date || <Dash />}</td>
+              <td className="px-4 py-3 text-xs whitespace-nowrap text-muted-foreground" dir="ltr">{s.last_session_date || <Dash />}</td>
               <td className="px-4 py-3 text-end">
                 <Link to={`/staff/students/${s.student_id}`} className="whitespace-nowrap text-[13px] font-semibold text-primary underline-offset-4 hover:underline" data-testid={`dash-view-${s.student_id}`}>{t("view_performance")}</Link>
               </td>

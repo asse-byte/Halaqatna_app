@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FlaskConical, Headphones, Lock, MapPin } from "lucide-react";
+import { ExternalLink, FlaskConical, Headphones, Lock, MapPin, Trophy } from "lucide-react";
 import { api, errMsg } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { ayahCount, surahName, surahsInJuz } from "../../lib/surahs";
-import { DEMO_RECITER, recitationUrl } from "../../lib/recitation";
+import { surahName } from "../../lib/surahs";
+import { recitedRanges, surahStatuses } from "../../lib/juzProgress";
+import { DEMO_RECITER, readAlongUrl, recitationUrl } from "../../lib/recitation";
 import { btnGhost, Figures, Modal, PageTitle } from "../../components/ui-kit";
 import { StarMark } from "../../components/Brand";
 
@@ -29,62 +30,21 @@ const SURAH_TONE = {
   LOCKED: "border-border bg-muted/60 text-muted-foreground",
 };
 const SURAH_ICON = {
-  MASTERED: (p) => <StarMark size={14} {...p} />,
+  MASTERED: (p) => <StarMark size={20} {...p} />,
   IN_PROGRESS: (p) => <MapPin size={14} {...p} />,
   LOCKED: (p) => <Lock size={13} {...p} />,
 };
 
-/** Every ayah the student has recited in an attended session, as ranges per Surah. */
-function recitedRanges(sessions) {
-  const bySurah = new Map();
-  for (const s of sessions) {
-    if (!s.surah_from || !["P", "L"].includes(s.attendance_status)) continue;
-    const last = s.surah_to ?? s.surah_from;
-    for (let n = s.surah_from; n <= last; n++) {
-      const from = n === s.surah_from ? s.ayah_from ?? 1 : 1;
-      const to = n === last ? s.ayah_to ?? s.ayah_from ?? ayahCount(n) : ayahCount(n);
-      if (!bySurah.has(n)) bySurah.set(n, []);
-      bySurah.get(n).push([from, to]);
-    }
-  }
-  return bySurah;
-}
+// The trail: a winding path of stages, from the first Juz at the top down to the last.
+const GAP = 104, TOP = 52;
+const nodeX = (i) => 50 + 30 * Math.sin((i * Math.PI) / 3.5);
+const nodeY = (i) => TOP + i * GAP;
 
-/** How many of a segment's ayahs the recorded ranges cover, overlaps counted once. */
-function coveredAyahs(ranges, seg) {
-  const clipped = (ranges.get(seg.surah) ?? [])
-    .map(([a, b]) => [Math.max(a, seg.from), Math.min(b, seg.to)])
-    .filter(([a, b]) => b >= a)
-    .sort((x, y) => x[0] - y[0]);
-  let n = 0, end = seg.from - 1;
-  for (const [a, b] of clipped) {
-    if (b > end) { n += b - Math.max(a, end + 1) + 1; end = b; }
-  }
-  return n;
-}
-
-/**
- * The Surahs of one Juz and where the student stands in each.
- *
- * A Juz before the current one is complete and one after it is locked — the same reading of
- * progress as the tiles, which the API derives from current_juz. Inside the Juz being
- * memorised, a Surah is mastered when the passages the teacher recorded cover all of its
- * ayahs in that Juz, and in progress when they cover some; if none has been started, the
- * first one not yet mastered is marked as the current step. Nothing here is stored.
- */
-function surahStatuses(juz, tileStatus, ranges) {
-  const segs = surahsInJuz(juz);
-  if (tileStatus === "MASTERED") return segs.map((s) => ({ ...s, status: "MASTERED" }));
-  if (tileStatus === "NOT_STARTED") return segs.map((s) => ({ ...s, status: "LOCKED" }));
-  const rows = segs.map((s) => {
-    const c = coveredAyahs(ranges, s);
-    return { ...s, status: c >= s.to - s.from + 1 ? "MASTERED" : c > 0 ? "IN_PROGRESS" : "LOCKED" };
-  });
-  if (!rows.some((s) => s.status === "IN_PROGRESS")) {
-    const next = rows.find((s) => s.status !== "MASTERED");
-    if (next) next.status = "IN_PROGRESS";
-  }
-  return rows;
+/** The trail between two stages as an SVG path, sampled finely enough to read as a curve. */
+function trail(fromIndex, toIndex) {
+  const parts = [];
+  for (let i = fromIndex; i <= toIndex + 1e-6; i += 0.1) parts.push(`${parts.length ? "L" : "M"}${nodeX(i).toFixed(2)},${nodeY(i).toFixed(1)}`);
+  return parts.join(" ");
 }
 
 export default function Journey() {
@@ -94,6 +54,7 @@ export default function Journey() {
   const [sessions, setSessions] = useState([]);
   const [open, setOpen] = useState(null);       // the Juz tile whose Surahs are shown
   const [playing, setPlaying] = useState(null); // the Surah segment being listened to
+  const currentRef = useRef(null);
 
   useEffect(() => {
     api.get(`/students/${actor.student_id}/journey`).then((r) => setJ(r.data)).catch((e) => toast.error(errMsg(e)));
@@ -103,9 +64,19 @@ export default function Journey() {
   const ranges = useMemo(() => recitedRanges(sessions), [sessions]);
   const rows = useMemo(() => (open ? surahStatuses(open.juz, open.status, ranges) : []), [open, ranges]);
 
-  const tiles = j?.tiles ?? [];
+  const tiles = useMemo(() => (j?.tiles ?? []).map((tile) => {
+    const stations = surahStatuses(tile.juz, tile.status, ranges);
+    return { ...tile, surahs: stations.length, stars: stations.filter((x) => x.status === "MASTERED").length };
+  }), [j, ranges]);
   const done = tiles.filter((x) => x.status === "MASTERED").length;
   const current = tiles.find((x) => x.status === "IN_PROGRESS");
+  const height = TOP + 30 * GAP + 44;
+  const currentIndex = (j?.current_juz ?? 1) - 1;
+
+  // Open on the stage the student is on, not at the top of a long trail.
+  useEffect(() => {
+    if (j && j.current_juz > 2) currentRef.current?.scrollIntoView({ block: "center" });
+  }, [j]);
 
   return (
     <div>
@@ -119,6 +90,7 @@ export default function Journey() {
               <StarMark size={20} className="text-gold" />
               <span className="text-xl font-semibold">{t("juz_done_count", { n: done })}</span>
             </div>
+            <div className="mt-1.5 text-xs text-muted-foreground" data-testid="journey-stars">{t("journey_stars", { n: tiles.reduce((n, x) => n + x.stars, 0) })}</div>
           </div>
           {current && (
             <div className="p-4 sm:p-5">
@@ -143,21 +115,40 @@ export default function Journey() {
         </Figures>
       )}
 
-      <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6 sm:gap-2 md:grid-cols-10" data-testid="journey-grid">
-        {tiles.map((tile) => {
+      {/* Always left-to-right, so the path has the same shape in both languages. */}
+      <div className="relative mx-auto max-w-md" style={{ height }} dir="ltr" data-testid="journey-grid">
+        <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          <path d={trail(0, 30)} fill="none" stroke="hsl(var(--border))" strokeWidth="6" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          {currentIndex > 0 && <path d={trail(0, currentIndex)} fill="none" stroke="hsl(var(--gold))" strokeWidth="6" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+        </svg>
+
+        {tiles.map((tile, i) => {
           const Icon = TILE_ICON[tile.status];
           return (
-            <button key={tile.juz} type="button" data-testid={`juz-progress-tile-${tile.juz}`} onClick={() => setOpen(tile)}
-              aria-label={`${t("juz")} ${tile.juz} · ${t(`st_${tile.status}`)}${tile.status === "IN_PROGRESS" ? ` · ${tile.progress}%` : ""}`}
-              className={`relative flex aspect-square flex-col justify-between overflow-hidden rounded-md border p-2 text-start transition-[transform,border-color,color] duration-150 hover:-translate-y-px active:translate-y-0 sm:p-2.5 ${TILE[tile.status]}`}>
-              <Icon className={tile.status === "NOT_STARTED" ? "opacity-60" : ""} />
-              <span className="self-end font-display text-xl font-semibold leading-none tabular-nums sm:text-[26px]">{tile.juz}</span>
-              {tile.status === "IN_PROGRESS" && (
-                <span className="absolute inset-x-0 bottom-0 h-1 bg-black/20"><span className="block h-full bg-gold" style={{ width: `${tile.progress}%` }} /></span>
+            <div key={tile.juz} ref={tile.status === "IN_PROGRESS" ? currentRef : undefined}
+              className="absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center" style={{ left: `${nodeX(i)}%`, top: nodeY(i) }}>
+              <button type="button" data-testid={`juz-progress-tile-${tile.juz}`} onClick={() => setOpen(tile)}
+                aria-label={`${t("juz")} ${tile.juz} · ${t(`st_${tile.status}`)}${tile.status === "IN_PROGRESS" ? ` · ${tile.progress}%` : ""}`}
+                className={`relative grid h-[60px] w-[60px] place-items-center rounded-full border-2 shadow-sm transition-[transform,border-color,color] duration-150 hover:-translate-y-0.5 active:translate-y-0 ${TILE[tile.status]} ${tile.status === "IN_PROGRESS" ? "ring-4 ring-primary/20" : ""}`}>
+                <span className="font-display text-xl font-semibold leading-none tabular-nums">{tile.juz}</span>
+                <span className="absolute -end-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-border bg-card text-foreground">
+                  <Icon className={tile.status === "NOT_STARTED" ? "opacity-60" : tile.status === "MASTERED" ? "text-gold" : "text-primary"} />
+                </span>
+              </button>
+              {tile.status === "IN_PROGRESS" && <span dir="auto" className="mt-1.5 whitespace-nowrap rounded-sm bg-primary px-1.5 py-px text-[11px] font-semibold text-primary-foreground">{t("journey_here")} · {tile.progress}%</span>}
+              {tile.status !== "MASTERED" && tile.stars > 0 && (
+                <span className="mt-1 flex items-center gap-1 rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-semibold" data-testid={`juz-stars-${tile.juz}`}>
+                  <StarMark size={11} className="text-gold" /><span className="tabular-nums">{tile.stars}/{tile.surahs}</span>
+                </span>
               )}
-            </button>
+            </div>
           );
         })}
+
+        <div className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center" style={{ left: `${nodeX(30)}%`, top: nodeY(30) }}>
+          <span className="grid h-11 w-11 place-items-center rounded-full border-2 border-gold bg-card text-gold"><Trophy size={20} strokeWidth={1.75} /></span>
+          <span className="mt-1 whitespace-nowrap rounded-sm bg-card px-1.5 text-[11px] font-semibold">{t("journey_finish")}</span>
+        </div>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
@@ -220,6 +211,9 @@ function RecitationModal({ segment, onClose }) {
         </audio>
         {failed && <p className="mt-2 text-xs font-semibold text-destructive" data-testid="recitation-failed">{t("listen_failed")}</p>}
         {!segment.whole && <p className="mt-3 text-xs text-muted-foreground">{t("listen_partial_hint", { from: segment.from, to: segment.to })}</p>}
+        <a href={readAlongUrl(segment.surah)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline" data-testid="read-along-link">
+          <ExternalLink size={13} />{t("journey_read_along")}
+        </a>
         <div className="mt-5 flex justify-end">
           <button type="button" className={btnGhost} onClick={onClose} data-testid="back-to-juz">{t("back_to_juz")}</button>
         </div>

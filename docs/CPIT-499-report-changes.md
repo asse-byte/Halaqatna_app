@@ -39,7 +39,7 @@ presented as a measured result.
 | XP per page / per session | 10 / 5 | `system_setting` |
 | Pages per Juz | 20 | `AnalyticsEngine`, `ml/main.py` |
 | Baseline paces for the FR10 assumptions — new memorisation / consolidation and review / fast student (pages a week) | 1 / 5 / 10 | `system_setting` (`pace_new`, `pace_review`, `pace_fast`) — §11.3 |
-| Sessions recommended before the forecast is relied on | 4 | `system_setting` (`forecast_min_sessions`) — §11.3 |
+| Sessions recommended before the forecast is relied on | 6 | `system_setting` (`forecast_min_sessions`) — §11.3, §13.3 |
 
 Changing any of these is expected (§11 item 3) and must be reported as calibration, with the
 evidence that motivated the change.
@@ -547,3 +547,94 @@ check 9/9. `php artisan test` was not re-run: nothing under `api/` changed. Chec
 running demo (`scripts/dev_up.sh`): Arabic at 1280 px as supervisor, teacher, student and system
 administrator; Arabic at 375 px (sign-in, overview, student page, Juz map) with no horizontal
 overflow; dark mode at 375 px and 1280 px; English at 1280 px.
+
+## 13. Fifth review round — the supervisor's further notes
+
+Seven notes from Dr. Ahmad Tayeb's later review. Notes 5 (Discord follow-up) and 6 (pilot study)
+are work for the team, not the code. No table, column or formula changed; every new figure is
+computed on read (rule 3), and every new string exists in both languages (NFR6).
+
+### 13.1 Note 1 — no zeros (already done in §11.1, one gap closed)
+
+The session history still printed `0` pages and `0` mistakes on absences and clean sessions.
+They are now dashes, as everywhere else.
+
+### 13.2 Note 2 — quick charts (FR14)
+
+| Chart | Where | Reads |
+|---|---|---|
+| **Attendance, one bar a day** for the last 7 days, beside the eight-week view of §11.1 behind a switch | Both dashboards | `daily_attendance`, same rule as `weekly_attendance`; a day with nothing marked is `null`, not 0% |
+| **Donut of mistakes by kind** | Both dashboards (`error_types`) and a student's page | Count of `session_error` rows; scoped to the teacher's own students (FR16) |
+| **Level over the last 8 sessions** | A line in each dashboard row, a larger one on a student's page | `session_levels`: the §3.3 Mastery evaluated after each recited session; no new formula |
+
+The colour of each kind of mistake is fixed, and the order keeps red and amber apart. Palette
+validator, both modes: pass, with one protan pair at ΔE 7.9, which the rule allows because every
+slice is also named with its count in the legend.
+
+### 13.3 Note 4 — what a forecast covers and assumes (FR10)
+
+- **Scope note**, under the date: the forecast covers completing the student's current Juz only,
+  not the whole Quran, with the Juz named. It replaces the general caveat of §11.3.
+- **Early-estimate warning** below `forecast_min_sessions` *attended* sessions. The default moves
+  from 4 to **6**, the figure in this review; §11.3 recorded 4 from the earlier one. It remains a
+  provisional setting, editable on the System settings page, and an existing database keeps its
+  stored value until it is changed there.
+- **"Model assumptions" box**, always visible, in the student's own figures: scope and pages left;
+  commitment (attendance share and sessions a week so far); pace; and what the model cannot know.
+  Served as part of `assumptions` on `GET /students/{id}/prediction`, and printed in the student
+  PDF. The what-if panel of §11.3 stays underneath it, and answers "what if the student had
+  already memorised five Juz?" through its range of Juz.
+- **A capped forecast is no longer printed as a date.** An ETA at the service's 3650-day cap means
+  no measurable pace, and is now shown as "more sessions are needed".
+
+**A limitation to state at the defence.** The model's pace counts all recorded pages, review
+included (`pages_memorized`), while the remaining pages of a Juz count new pages only. So the
+forecast assumes the student's share of review stays as it has been, and it is optimistic for a
+student who reviews a lot. The box says so. Changing it would change the §3.9 calculation, so it
+is reported here, not altered.
+
+### 13.4 Note 3 — the Juz map as a trail (FR16, demo)
+
+The 30 tiles of §11.2 become a winding trail of stages ending in a trophy, opening on the current
+stage; progress so far is drawn in gold. Tapping a stage opens its Surahs as before. A Surah now
+earns its star in **any** Juz whose ayahs the recorded passages cover, not only the current one,
+so a student who began with An-Naba sees stars in Juz 30 while their current Juz is an earlier
+one. The stage shows the count (`3/37`). Beside the audio there is a link to the Surah on
+Quran.com, to follow the text during the recitation, labelled and limited as in §11.2.
+`php artisan db:seed --class=JuzMapDemoSeeder` gives the first demo student three complete Surahs;
+it refuses to run in production, and those rows back no reported figure.
+
+### 13.5 Note 7 — the learning curve for the ML chapter
+
+`ml/learning_curve.py` measures forecast error against the number of sessions recorded. For each
+cutoff N, a forecast made from a student's first N sessions is compared with the pace the student
+then actually kept. The student being forecast is never in the training data (leave one student
+out), and a point resting on fewer than 3 students is dropped and listed.
+
+    ML_DATABASE_URL=... python learning_curve.py --data-source pilot
+
+It writes a JSON report and an SVG figure to `ml/reports/`. Unless `--data-source pilot` is
+passed, the figure is stamped **DEMO DATA — NOT A RESULT**.
+
+**No curve for the report exists yet.** The ±30 → ±7 days in the supervisor's note illustrates the
+expected shape; it is neither a target nor a finding. The only run so far is on the synthetic demo
+data, which backs no claim and did not fall steadily, so it is not reproduced here. At three
+sessions a week, a point at 20 sessions needs about nine weeks of history for at least three
+students, so a one-week pilot cannot produce this figure on its own.
+
+### 13.6 Tests
+
+`PredictionTest` (scope and assumptions, the threshold, the capped forecast) and
+`DashboardSummaryTest` (daily attendance, mistake counts, teacher scope, session levels, the PDF
+in both languages) were extended; `ml/test_learning_curve.py` (6 tests) and
+`scripts/check_juz_map.mjs` (5 tests, `npm run check:juz`) are new.
+
+Run on this branch, PHP 8.3.33, 2026-11-04: `php artisan test` — **165 passed (1152 assertions)**.
+`node scripts/check_locales.js`: parity OK, 389 keys in each language. `npm run lint` clean;
+`npm run build` clean. Checked by hand in the running app with the ML service up: the supervisor
+dashboard and a student's page in Arabic at 1280 px, the trail and the Surah list as a student at
+1280 px, the trail at 375 px with no horizontal overflow, and the early-estimate warning on a
+student with one session. **Not checked by eye:** the printed PDF (the tests confirm it renders in
+both languages, not how it looks), the learning-curve figure, dark mode and English for the new
+charts, the audio actually playing (the file answers 200 with `audio/mpeg`), and the change to the
+phone app, which has no test run behind it.

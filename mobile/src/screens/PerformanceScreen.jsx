@@ -58,10 +58,12 @@ export default function PerformanceScreen({ route }) {
 
       <View style={s.wide}>
         <Text style={s.label}>{t("forecast")}</Text>
-        {pred?.prediction?.predicted_completion_date ? (
+        {pred?.prediction?.predicted_completion_date && !pred.assumptions?.no_estimate ? (
           <>
             <Text style={s.value}>{pred.prediction.predicted_completion_date}</Text>
             <Text style={s.small}>{t("forecast_eta", { days: pred.prediction.eta_days })}</Text>
+            {pred.assumptions && <Text style={s.hint}>{t("forecast_covers", { juz: pred.assumptions.juz })}</Text>}
+            {pred.assumptions?.cold_start && <Text style={s.warn}>{t("forecast_sparse", { n: pred.assumptions.attended_sessions, min: pred.assumptions.min_sessions })}</Text>}
             {pred.stale && <Text style={s.warn}>{t("forecast_stale")}</Text>}
           </>
         ) : <Text style={s.small}>{t("forecast_none")}</Text>}

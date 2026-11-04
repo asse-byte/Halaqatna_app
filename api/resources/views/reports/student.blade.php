@@ -89,9 +89,29 @@
 <table width="100%" style="border:0.5pt solid #dfe6e2; padding:7pt; margin-bottom:10pt; font-size:9.5pt;"><tr>
     <td style="text-align:{{ $align }};">
         <span style="color:#6b7280; font-size:8pt;">{{ $w['forecast'] }}</span><br>
-        @if($prediction && $prediction->predicted_completion_date)
+        @if($prediction && $prediction->predicted_completion_date && !$forecast_basis['no_estimate'])
             <span style="font-size:14pt; font-weight:bold; color:#0F382C;" dir="ltr">{{ $prediction->predicted_completion_date }}</span>
             <span style="color:#4b5563;"> — {{ str_replace('{n}', (int) $prediction->eta_days, $w['days_left']) }}</span>
+            @php
+                // The same scope note, early-estimate warning and assumptions the screens show.
+                $fill = fn (string $key) => strtr($w[$key], [
+                    '{juz}' => $forecast_basis['juz'], '{remaining}' => $forecast_basis['remaining_pages'], '{total}' => $forecast_basis['pages_per_juz'],
+                    '{min}' => $forecast_basis['min_sessions'], '{n}' => $forecast_basis['attended_sessions'],
+                    '{pct}' => $forecast_basis['attendance_pct'], '{per_week}' => $forecast_basis['sessions_per_week'],
+                    '{pace}' => $forecast_basis['pace_pages_per_week'],
+                ]);
+            @endphp
+            <br><span style="color:#4b5563; font-size:8pt;">{{ $fill('forecast_covers') }}</span>
+            @if($forecast_basis['cold_start'])
+                <br><span style="color:#B45309; font-size:8pt;">{{ $fill('forecast_sparse') }}</span>
+            @endif
+            <br><span style="font-weight:bold; font-size:8pt;">{{ $w['assumptions_title'] }}</span>
+            <br><span style="color:#4b5563; font-size:7.5pt;">{{ $fill('assume_scope') }}</span>
+            <br><span style="color:#4b5563; font-size:7.5pt;">{{ $fill('assume_commitment') }}</span>
+            @if($forecast_basis['pace_pages_per_week'] !== null)
+                <br><span style="color:#4b5563; font-size:7.5pt;">{{ $fill('assume_pace') }}</span>
+            @endif
+            <br><span style="color:#4b5563; font-size:7.5pt;">{{ $w['assume_limits'] }}</span>
         @else
             <span style="color:#6b7280;">{{ $w['forecast_none'] }}</span>
         @endif

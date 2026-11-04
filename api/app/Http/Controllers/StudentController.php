@@ -193,11 +193,10 @@ class StudentController extends Controller
             // forecast rests on, and what each baseline pace stands for.
             'assumptions' => [
                 'sessions_count' => $m['sessions_count'],
-                'min_sessions' => (int) SystemSetting::num('forecast_min_sessions', 4),
                 'recorded_pace' => $m['momentum'],
                 'paces' => $paces,
                 'current_juz' => $s->current_juz,
-            ],
+            ] + $ml->basis($s, $m, $p),
             'scenario' => isset($d['scope_from']) || isset($d['pace']) ? $this->scenario($s, $m, $d, $paces, $ml, $analytics) : null,
         ]);
     }
