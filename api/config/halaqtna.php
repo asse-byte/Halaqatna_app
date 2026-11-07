@@ -31,6 +31,15 @@ return [
     ],
 
     /*
+     * Whether DatabaseSeeder also creates the demo circles, staff and students. They carry the
+     * published password in the README and synthetic sessions, so a deployment real people
+     * can reach must set SEED_DEMO_DATA=0 (scripts/docker_setup.sh does unless DEMO=1).
+     * Reference data and the System Administrator are seeded either way. Defaults to on so
+     * that the local demo and the tests are unchanged.
+     */
+    'seed_demo_data' => filter_var(env('SEED_DEMO_DATA', true), FILTER_VALIDATE_BOOLEAN),
+
+    /*
      * Proxies whose X-Forwarded-* headers are believed (NFR3a, FR21).
      *
      * Behind nginx every request reaches Laravel from the nginx container, so without this

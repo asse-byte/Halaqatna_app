@@ -56,3 +56,4 @@ api/coverage/
 
 # --- Docker ---
 docker/nginx/certs/
+backups/

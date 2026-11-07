@@ -71,6 +71,13 @@ Open `https://localhost`. The browser will warn that the certificate is not trus
 what self-signed means, and it is expected. Replace the two files in `docker/nginx/certs/`
 with a real certificate for anything a real user can reach.
 
+`docker_setup.sh` seeds **no demo data** unless you pass `DEMO=1`: the stack starts with the
+reference data and the System Administrator, who then creates the circles (FR19).
+
+For a deployment real people use, `scripts/prod_init.sh` generates the secrets,
+`scripts/install_cert.sh` installs a Let's Encrypt certificate and `scripts/backup_db.sh` takes
+the backups. `docs/DEPLOY_AR.md` walks through it end to end on a free-tier VM.
+
 ### Development — each piece by hand
 
 ```bash
