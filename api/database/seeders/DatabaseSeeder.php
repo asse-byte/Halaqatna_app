@@ -62,6 +62,9 @@ class DatabaseSeeder extends Seeder
 
         $sysAdmin = $this->systemAdministrator();
 
+        // A deployment real people use starts empty: the System Administrator creates the
+        // circles (FR19). The demo accounts below have a published password.
+        if (!config('halaqtna.seed_demo_data')) return;
         if (Circle::count() > 0) return; // demo data only once
 
         $c1 = Circle::create(['name' => 'حلقة الإمام نافع', 'location' => 'جامع الملك فهد – جدة', 'schedule_time' => '16:30']);

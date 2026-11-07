@@ -12,12 +12,19 @@
 #
 #   DB_ROOT_PASSWORD=... DB_ADMIN_PASSWORD=... ML_DB_PASSWORD=... bash scripts/docker_setup.sh
 #   FRESH=1 ... bash scripts/docker_setup.sh      # drop every table first (demo reset)
+#   DEMO=1  ... bash scripts/docker_setup.sh      # also seed the demo circles (published password!)
 #
-# Safe to run again. Only FRESH=1 drops data.
+# The passwords may instead sit in docker/.env, which scripts/prod_init.sh writes and this
+# script reads, so docker compose finds the same values on every later start.
+#
+# By default NO demo data is seeded: the stack starts with the reference data and the System
+# Administrator only. Safe to run again. Only FRESH=1 drops data.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_NAME="halaqtna"   # fixed by MYSQL_DATABASE in docker/docker-compose.yml
+
+[ -f "$ROOT/docker/.env" ] && { set -a; . "$ROOT/docker/.env"; set +a; }
 
 : "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD (the root password the db container was created with)}"
 : "${DB_ADMIN_PASSWORD:?set DB_ADMIN_PASSWORD (halaqtna_admin in docker/mysql/init.sql)}"
@@ -35,7 +42,7 @@ cd "$ROOT/docker"
 compose() { docker compose "$@"; }
 root_sql() { compose exec -T db mysql -uroot -p"$DB_ROOT_PASSWORD" "$@"; }
 # A one-off api container with the admin account: the running api never holds it.
-as_admin() { compose run --rm --no-deps -e DB_USERNAME=halaqtna_admin -e DB_PASSWORD="$DB_ADMIN_PASSWORD" api php artisan "$@"; }
+as_admin() { compose run --rm --no-deps -e DB_USERNAME=halaqtna_admin -e DB_PASSWORD="$DB_ADMIN_PASSWORD" -e SEED_DEMO_DATA="${DEMO:-0}" api php artisan "$@"; }
 
 say "Starting the database"
 compose up -d --build db
@@ -57,7 +64,11 @@ as_admin "$MIGRATE" --force
 say "Applying the least-privilege grants (rule 4: audit_log and xp_ledger stay append-only)"
 sed -e "s/__HOST__/%/g" "$ROOT/scripts/db_grants.sql" | root_sql "$DB_NAME"
 
-say "Seeding reference data, the System Administrator and the demo circles"
+if [ "${DEMO:-0}" = "1" ]; then
+  say "Seeding reference data, the System Administrator and the DEMO circles (published passwords)"
+else
+  say "Seeding reference data and the System Administrator (no demo data)"
+fi
 as_admin db:seed --force
 
 say "Verifying the append-only guarantee"
