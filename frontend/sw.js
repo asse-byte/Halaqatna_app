@@ -6,9 +6,9 @@
 // read them. Saving a session while offline is the existing queue's job (src/lib/offline.js),
 // not this file's.
 //
-// main.jsx registers /sw.js?v=<build id>. A new build therefore installs a new worker, which
-// clears the previous build's cache when it takes over.
-const VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
+// The build writes its id over the placeholder below (vite.config.mjs), so each deploy is a new worker
+// that clears the previous build's cache when it takes over.
+const VERSION = "__BUILD_ID__";
 const CACHE = `halaqtna-shell-${VERSION}`;
 const SHELL = ["/", "/manifest.json", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 

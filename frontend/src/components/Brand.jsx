@@ -4,15 +4,13 @@ import { useId } from "react";
 // unit a memoriser counts progress in. Drawn as one outline (two squares, one turned 45°).
 const STAR = "5.5,5.5 9.31,5.5 12,2.81 14.69,5.5 18.5,5.5 18.5,9.31 21.19,12 18.5,14.69 18.5,18.5 14.69,18.5 12,21.19 9.31,18.5 5.5,18.5 5.5,14.69 2.81,12 5.5,9.31";
 
-/** The mark: a lapis star with a paper ring at its centre. */
-export function Seal({ className = "h-9 w-9", inverted = false }) {
-  return (
-    <svg viewBox="0 0 24 24" className={`shrink-0 ${className}`} aria-hidden="true">
-      <polygon points={STAR} fill={inverted ? "hsl(var(--primary-foreground))" : "hsl(var(--primary))"} />
-      <circle cx="12" cy="12" r="3.4" fill="none" strokeWidth="1.3"
-        stroke={inverted ? "hsl(var(--primary))" : "hsl(var(--primary-foreground))"} />
-    </svg>
-  );
+/**
+ * The logo: an open Mushaf on its stand inside a circle of students, the halaqa the app is
+ * named after. One file (public/favicon.svg, drawn by scripts/make_pwa_icons.py) is the mark
+ * in the app, the browser tab and, as PNG, the installed app's icon.
+ */
+export function Seal({ className = "h-9 w-9" }) {
+  return <img src="/favicon.svg" alt="" className={`shrink-0 ${className}`} draggable="false" />;
 }
 
 /** The star alone, in the current text colour — the mark of something completed. */
