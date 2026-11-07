@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // A new id per build: public/sw.js names its cache after it, so a deploy replaces the old shell.
+    define: { "import.meta.env.VITE_BUILD_ID": JSON.stringify(Date.now().toString(36)) },
     resolve: { alias: { "@": path.resolve(root, "src") } },
     server: {
       port: 3000,

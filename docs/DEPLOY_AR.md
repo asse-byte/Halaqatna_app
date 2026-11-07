@@ -93,7 +93,7 @@ SYS_ADMIN_EMAIL=بريدكم@example.org bash scripts/prod_init.sh نطاقكم.
 
 ```bash
 sudo certbot certonly --standalone -d نطاقكم.me -m بريدكم@example.org --agree-tos \
-  --deploy-hook "$PWD/scripts/install_cert.sh" \
+  --deploy-hook "bash $PWD/scripts/install_cert.sh" \
   --pre-hook  "docker compose -f $PWD/docker/docker-compose.yml stop nginx || true" \
   --post-hook "docker compose -f $PWD/docker/docker-compose.yml start nginx || true"
 sudo certbot renew --dry-run       # يجب أن ينجح؛ فالتجديد تلقائي كل شهرين تقريبًا
@@ -115,6 +115,19 @@ bash scripts/docker_setup.sh
 افتحوا `https://نطاقكم.me`، وادخلوا من صفحة الموظفين ببريد مدير النظام وكلمته من `docker/.env`، وغيّروا الكلمة فورًا من «حسابي». ثم من مدير النظام: أنشئوا الحلقة ومشرفها (FR19)، والمشرف يضيف المعلمين والطلاب ويسلّم كل طالب رمزه.
 
 فحص سريع: لا يظهر أي حساب تجريبي، وتظهر قفلة المتصفح الخضراء، والتوقعات تعمل (تبدأ بنموذج `baseline-0.1` حتى يُدرَّب على بيانات كافية).
+
+**مدير نظام إضافي:** لا تتيحه الشاشات عمدًا. أنشئوه من الخادم، فيطبع كلمة مرور عشوائية مرة واحدة:
+
+```bash
+cd ~/Halaqatna_app/docker && docker compose exec api php artisan halaqtna:create-sys-admin البريد@example.org --name="الاسم"
+```
+
+سلّموا الكلمة لصاحبها بطريق خاص، وليغيّرها من «حسابي» في أول دخول.
+
+**تثبيت التطبيق (PWA):** الموقع قابل للتثبيت كتطبيق، ويفتح واجهته دون اتصال. ولا تُحفظ بيانات الطلاب على الجهاز، فهي تأتي من الخادم دائمًا، ويحفظ تسجيل الجلسات دون اتصال في طابوره المعتاد حتى يعود الاتصال.
+- **Android (Chrome):** القائمة ⋮ ثم **تثبيت التطبيق** (Install app).
+- **iPhone وiPad (Safari):** زر المشاركة ثم **إضافة إلى الشاشة الرئيسية**.
+- **الكمبيوتر (Chrome أو Edge):** أيقونة التثبيت في شريط العنوان.
 
 ## 7. النسخ الاحتياطي (لا تتخطوه)
 
