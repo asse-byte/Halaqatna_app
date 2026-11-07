@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { InstallApp } from "../components/InstallApp";
 import { homeFor, useAuth } from "../lib/auth";
 import { errMsg } from "../lib/api";
 import { LangThemeToggles } from "../components/Shell";
@@ -43,7 +44,7 @@ export function LoginPanel({ className = "", compact = false }) {
         <StarLattice className="absolute inset-0 h-full w-full text-gold opacity-[0.22]" size={64} />
         <div className="relative px-5 pb-6 pt-5 sm:px-10">
           <div className="flex items-center gap-2.5">
-            <Seal className="h-8 w-8" inverted />
+            <Seal className="h-8 w-8" />
             <span className="font-display text-xl font-semibold">{t("app_name")}</span>
           </div>
           <blockquote className="mt-5 font-quran text-[24px] leading-[1.8]" lang="ar" dir="rtl">{VERSE}</blockquote>
@@ -57,7 +58,7 @@ export function LoginPanel({ className = "", compact = false }) {
       <StarLattice className="absolute inset-0 h-full w-full text-gold opacity-[0.22]" />
       <div className="relative flex h-full flex-col justify-between gap-10 p-8 lg:p-12">
         <div className="flex items-center gap-3">
-          <Seal className="h-10 w-10" inverted />
+          <Seal className="h-10 w-10" />
           <div>
             <div className="font-display text-2xl font-semibold leading-tight">{t("app_name")}</div>
             <div className="text-xs opacity-70" dir="ltr">CPIT-499 · King Abdulaziz University</div>
@@ -123,6 +124,7 @@ export default function StaffLogin() {
             <span className="underline-offset-4 group-hover:underline">{t("i_am_student")}</span>
             <ArrowLeft size={16} className="shrink-0 ltr:-scale-x-100" />
           </Link>
+          <div className="mt-5"><InstallApp /></div>
         </div>
       </section>
     </div>

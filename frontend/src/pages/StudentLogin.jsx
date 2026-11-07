@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { InstallApp } from "../components/InstallApp";
 import { useAuth } from "../lib/auth";
 import { errMsg } from "../lib/api";
 import { LangThemeToggles } from "../components/Shell";
@@ -62,6 +63,7 @@ export default function StudentLogin() {
             <span className="underline-offset-4 group-hover:underline">{t("i_am_staff")}</span>
             <ArrowLeft size={16} className="shrink-0 ltr:-scale-x-100" />
           </Link>
+          <div className="mt-5"><InstallApp /></div>
         </div>
       </section>
     </div>

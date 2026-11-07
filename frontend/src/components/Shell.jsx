@@ -4,6 +4,7 @@ import { Award, BookOpen, CalendarCheck, ClipboardList, FileText, Flag, Language
 import { useT } from "../lib/i18n";
 import { useAuth } from "../lib/auth";
 import { Seal } from "./Brand";
+import { InstallApp } from "./InstallApp";
 
 /**
  * The navigation is where the role boundary of Table 1.1 becomes visible.
@@ -90,7 +91,10 @@ export function Shell({ children }) {
             <div className="truncate text-sm font-semibold" data-testid="shell-actor-name">{actor.name}</div>
             {actor.circle?.name && <div className="truncate text-xs text-muted-foreground">{actor.circle.name}</div>}
           </div>
-          <LangThemeToggles />
+          <div className="flex items-center gap-1.5">
+            <InstallApp compact />
+            <LangThemeToggles />
+          </div>
           <button data-testid="logout-button" onClick={() => { logout(); nav("/login"); }} aria-label={t("logout")}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-destructive/[0.07] hover:text-destructive md:justify-start">
             <LogOut size={15} strokeWidth={1.75} className="rtl:-scale-x-100" /><span className="hidden md:inline">{t("logout")}</span>
